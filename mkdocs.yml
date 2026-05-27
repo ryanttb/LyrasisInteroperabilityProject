@@ -5,6 +5,7 @@ repo_url: https://github.com/lyrasisorghome/InteroperabilityProject
 nav:
   - Home: index.md
   - Get Involved: feedback.md
+  - Traceability: traceability.md
   - About: about.md
 
 theme: readthedocs
