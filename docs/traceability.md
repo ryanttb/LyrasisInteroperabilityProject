@@ -12,15 +12,15 @@ Maps **approved use cases** and **behavior scenarios** to **technical specificat
 
 | Scenario | Use case IDs | CSTs | Protocol / focus | Behavior scenario issue | Spec document | Spec status | Scenario ↔ spec |
 |----------|--------------|------|------------------|-------------------------|---------------|-------------|------------------|
-| A1 | A1 | ArchivesSpace, DSpace | DSpace Search API; one-time link | [#7](https://github.com/lyrasisorghome/InteroperabilityProject/issues/7) | — | — | Not started |
-| A2 | A2 | ArchivesSpace, DSpace | DSpace Search API; one-time link | [#44](https://github.com/lyrasisorghome/InteroperabilityProject/issues/44) | — | — | Not started |
+| A1 | A1 | ArchivesSpace, DSpace | DSpace Search API; one-time link | [#7](https://github.com/lyrasisorghome/InteroperabilityProject/issues/7) | [`specs/A1-bidirectional-linking-as-ds.md`](../specs/A1-bidirectional-linking-as-ds.md) | Draft v0.2 | **In progress** — see gaps below |
+| A2 | A2 | ArchivesSpace, DSpace | DSpace Search API; one-time link | [#44](https://github.com/lyrasisorghome/InteroperabilityProject/issues/44) | [`specs/A1-bidirectional-linking-as-ds.md`](../specs/A1-bidirectional-linking-as-ds.md) | Draft v0.2 | **In progress** — see gaps below |
 | A3 | A3 | ArchivesSpace, DSpace | SWORD deposit + AS digital object | [#45](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) | — | — | Not started |
 | A4 | A4 | ArchivesSpace, DSpace | SWORD batch deposit | [#52](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52) | — | — | Not started |
 | C1 | C1 | CollectionSpace | OAI-PMH 2.0 provider | [#46](https://github.com/lyrasisorghome/InteroperabilityProject/issues/46) | [`specs/C1-cs-oai-pmh.md`](../specs/C1-cs-oai-pmh.md) | Draft v0.2 | **In progress** — see gaps below |
 | C2 | C2 | CollectionSpace, ArchivesSpace | OAI-PMH (CS) + shared discovery | [#47](https://github.com/lyrasisorghome/InteroperabilityProject/issues/47) | — (may extend C1 spec) | — | Not started |
 | C3 | C3 | CollectionSpace, ArchivesSpace | Cross-system search / field mapping | [#51](https://github.com/lyrasisorghome/InteroperabilityProject/issues/51) | — | — | Not started |
-| F1 | F1, D1, D2 | All five CSTs | Integration repository & documentation | [#58](https://github.com/lyrasisorghome/InteroperabilityProject/issues/58) | — | — | Not started; parent tracking [#57](https://github.com/lyrasisorghome/InteroperabilityProject/issues/57) |
-| V1 | V1 | VIVO, DSpace | SWORD deposit | [#54](https://github.com/lyrasisorghome/InteroperabilityProject/issues/54) | — | — | Not started |
+| F1 | F1, D1, D2 | All five CSTs | Integration repository & documentation | [#58](https://github.com/lyrasisorghome/InteroperabilityProject/issues/58) | [`specs/F1-integration-scenario-registry.md`](../specs/F1-integration-scenario-registry.md) | Draft v0.2 | **In progress** — see gaps below; parent tracking [#57](https://github.com/lyrasisorghome/InteroperabilityProject/issues/57) |
+| V1 | V1 | VIVO, DSpace | SWORD deposit | [#54](https://github.com/lyrasisorghome/InteroperabilityProject/issues/54) | [`specs/A1-bidirectional-linking-as-ds.md`](../specs/A1-bidirectional-linking-as-ds.md) | Draft v0.1 | **In progress** — see gaps below |
 | V2 | V2 | VIVO, DSpace | COAR Notify | [#55](https://github.com/lyrasisorghome/InteroperabilityProject/issues/55) | — | — | Not started |
 
 **Legend — Scenario ↔ spec**: `Not started` | `In progress` | `Aligned` | `Gap` (spec exists but does not cover scenario) | `N/A`
@@ -31,11 +31,11 @@ Maps **approved use cases** and **behavior scenarios** to **technical specificat
 
 | CST | Scenarios | Spec documents (repo) | RFP workflow covered? |
 |-----|-----------|-------------------------|------------------------|
-| ArchivesSpace | A1, A2, A3, A4, C2, C3, F1 | — | Pending specs |
-| CollectionSpace | C1, C2, C3, F1 | C1 (OAI-PMH) | **Partial** (C1 only) |
+| ArchivesSpace | A1, A2, A3, A4, C2, C3, F1 | A1 | **Partial** (A1, A2 only) |
+| CollectionSpace | C1, C2, C3, F1 | C1 | **Partial** (C1 only) |
 | DSpace | A1–A4, F1, V1, D1*, D2* | — | Pending specs |
-| Fedora | F1 | — | Pending (likely via F1) |
-| VIVO | F1, V1, V2 | — | Pending specs |
+| Fedora | F1 | F1 | Pending (likely via F1) |
+| VIVO | V1, V2, F2 | V1 | **Partial** (V1 only) |
 
 \*D1/D2 documented via integration repository (F1), not separate behavior-scenario issues.
 

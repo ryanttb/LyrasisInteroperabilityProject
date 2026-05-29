@@ -1,5 +1,6 @@
 ---
 source: https://docs.google.com/document/d/1TuCEufv8ekB6XgZT3aEr8g7ciW4d-xPvLh7T8tLswO4
+scenario: C1
 issue: https://github.com/lyrasisorghome/InteroperabilityProject/issues/46
 last_synced: 2026-05-27
 ---
