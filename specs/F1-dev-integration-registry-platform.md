@@ -21,7 +21,7 @@ version: 0.1-draft
 
 **Systems:** Registry data store, submission workflow, read UI, REST API (logical contract)
 
-**Normative references:**
+**References:**
 
 - Requirements baseline: [`F1-integration-scenario-registry.md`](F1-integration-scenario-registry.md) (data model, roles, Phase II endpoint table)
 - Behavior scenarios: [GitHub issue #58](https://github.com/lyrasisorghome/InteroperabilityProject/issues/58)
@@ -40,7 +40,7 @@ This document is **self-contained for platform decisions** but **inherits field 
 
 1. A **canonical JSON record** (the logical API payload regardless of backend)
 2. Three **viable Phase I platform paths** with architecture diagrams
-3. A **normative REST API contract** (Phase II on paper; useful now to fix the interface)
+3. A **REST API contract** (Phase II on paper; useful now to lock the interface down, AKA: normative)
 4. **Sequence diagrams** for deposit, search, and update with example JSON
 5. A **decision matrix** and a recommended default for June 2026 delivery
 
@@ -167,7 +167,7 @@ Default for Phase I: **warn, do not block** (community registry, not cataloging 
 
 ---
 
-## Logical REST API (normative)
+## REST API Contract (required behavior)
 
 Implementations MAY defer HTTP exposure to Phase II, but Phase I storage and UI MUST be mappable to these operations. This table extends the parent spec with request/response detail.
 
@@ -449,7 +449,7 @@ flowchart TB
 
 ### Submission via pull request
 
-Yes — this is a standard pattern:
+This is a common pattern:
 
 1. Contributor forks repo (or uses GitHub web editor with branch).
 2. Adds `registry/scenarios/{uuid}.yaml` using PR template checklist.
@@ -538,7 +538,7 @@ Phase II upgrade path: add Cloudflare Worker or Lambda that serves `GET /api/v1/
 
 ### Static UI sketch
 
-Minimal Phase I UI (Jekyll/Eleventy/React SPA on Pages):
+Minimal Phase I UI (Jekyll/Eleventy/React Single-Page Application (SPA) on Pages):
 
 - Dropdowns: source system, target system, integration type, protocol, status
 - Free-text keyword box
@@ -625,7 +625,7 @@ sequenceDiagram
 | Pros | Cons |
 |------|------|
 | Exact fit to parent spec (roles, email, API) | Highest cost and schedule risk |
-| Server-side duplicate detection, FTS, rate limits | Requires ops (monitoring, backups — parent G-03) |
+| Server-side duplicate detection, full-text search (FTS), rate limits | Requires ops (monitoring, backups — parent G-03) |
 | Best UX for matrix filtering | Overkill if seed dataset is 10–15 records |
 
 ---
