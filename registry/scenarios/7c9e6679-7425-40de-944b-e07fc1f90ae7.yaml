@@ -1,0 +1,30 @@
+id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+title: VIVO publication deposit to DSpace via SWORD v2
+source_system:
+  - VIVO
+target_system:
+  - DSpace
+integration_type: Deposit
+protocol:
+  - SWORD v2
+status: Active
+description: |
+  Researcher-facing deposit workflow from VIVO publication records to a DSpace
+  institutional repository using SWORD v2 AtomPub. Covers service document
+  discovery, metadata package deposit, and optional link-back on the VIVO profile.
+submitted_by: LYRASIS Interoperability Project (seed record)
+submitted_date: "2026-06-06T12:00:00Z"
+prerequisites: |
+  DSpace with SWORD v2 enabled; VIVO with configured deposit target; shared or
+  per-researcher IR credentials per institution policy.
+configuration_notes: |
+  PoC targets DSpace SWORD v2 (not v3). See specs/V1-vivo-sword-deposit.md for
+  admin configuration, deposit HTTP sequence, and metadata mapping gaps.
+related_spec_url: https://github.com/lyrasisorghome/InteroperabilityProject/blob/main/specs/V1-vivo-sword-deposit.md
+tags:
+  - SWORD
+  - researcher workflow
+  - publication
+license: CC-BY-4.0
+updated_date: "2026-06-06T12:00:00Z"
+flagged: false

@@ -1,0 +1,57 @@
+# Registry validation and index build
+#
+# Triggers when registry scenario files or validation scripts change.
+# On pull requests: validate schema + ensure index.json is current.
+# On push to main: same checks (index must be committed after editing YAML).
+
+name: Registry validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "registry/**"
+      - "scripts/validate_registry.py"
+      - "scripts/build_registry_index.py"
+      - "registry/requirements.txt"
+      - ".github/workflows/registry-validate.yml"
+  pull_request:
+    paths:
+      - "registry/**"
+      - "scripts/validate_registry.py"
+      - "scripts/build_registry_index.py"
+      - "registry/requirements.txt"
+      - ".github/workflows/registry-validate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate scenarios and index
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the branch under test (PR head or push commit).
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 2. Python matches local dev; scripts use 3.11+ syntax minimally.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: registry/requirements.txt
+
+      # 3. Install only registry deps (separate from mkdocs requirements.txt).
+      - name: Install registry dependencies
+        run: pip install -r registry/requirements.txt
+
+      # 4. JSON Schema + filename + duplicate advisory checks.
+      - name: Validate scenario YAML files
+        run: python scripts/validate_registry.py
+
+      # 5. Fail if someone edited YAML but forgot to rebuild index.json.
+      - name: Verify registry/index.json is up to date
+        run: python scripts/build_registry_index.py --check

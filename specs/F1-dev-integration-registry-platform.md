@@ -734,10 +734,44 @@ Each seed record MUST include `related_spec_url` when a LYRASIS spec exists.
 
 ---
 
+## Implementation artifacts (Option B starter kit)
+
+These files exist in this repo as a working prototype:
+
+| Artifact | Path |
+|----------|------|
+| JSON Schema | [`registry/schema.json`](../registry/schema.json) |
+| Controlled vocabularies | [`registry/vocabularies.yaml`](../registry/vocabularies.yaml) |
+| Seed scenario records | [`registry/scenarios/`](../registry/scenarios/) |
+| Public read index | [`registry/index.json`](../registry/index.json) (generated) |
+| Validate script | [`scripts/validate_registry.py`](../scripts/validate_registry.py) |
+| Index builder | [`scripts/build_registry_index.py`](../scripts/build_registry_index.py) |
+| GitHub Actions CI | [`.github/workflows/registry-validate.yml`](../.github/workflows/registry-validate.yml) |
+| Contributor docs | [`registry/README.md`](../registry/README.md) |
+| Issue form (non-YAML submitters) | [`.github/ISSUE_TEMPLATE/registry-submission.yml`](../.github/ISSUE_TEMPLATE/registry-submission.yml) |
+| PR template | [`.github/PULL_REQUEST_TEMPLATE/registry-record.md`](../.github/PULL_REQUEST_TEMPLATE/registry-record.md) |
+
+### Local workflow
+
+```powershell
+pip install -r registry/requirements.txt
+python scripts/validate_registry.py
+python scripts/build_registry_index.py
+git add registry/scenarios/ registry/index.json
+```
+
+### CI workflow (what Actions runs)
+
+1. Trigger on PR/push when `registry/**` or validation scripts change.
+2. `validate_registry.py` — JSON Schema, UUID filename match, duplicate advisories.
+3. `build_registry_index.py --check` — fails if `index.json` was not rebuilt after YAML edits.
+
+See [`registry/README.md`](../registry/README.md) for a contributor-oriented explanation.
+
 ## Next steps
 
-1. **Stakeholder pick:** Confirm Option B (GitHub) vs A (Google) vs C (build app) — one meeting, use decision matrix above.
-2. **Create registry repo** (if B): schema, CI, Pages stub, Issue Form, PR template.
-3. **Backfill seed records** from existing specs in this repo.
+1. **Stakeholder pick:** Confirm Option B (GitHub) vs A (Google) vs C (build app) — starter kit assumes B in-repo.
+2. **GitHub Pages UI** (not yet in repo): static filter page reading `registry/index.json`.
+3. **Backfill** remaining seed records (target 10–15 per issue #58).
 4. **Fold** chosen platform specifics back into [`F1-integration-scenario-registry.md`](F1-integration-scenario-registry.md) Integration Architecture table (replace TBD rows).
-5. **Optional v0.2:** JSON Schema file in repo; OpenAPI 3 export from logical API section.
+5. **Optional v0.2:** OpenAPI 3 export from logical API section; link checker job.

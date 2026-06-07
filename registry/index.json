@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "generated_at": "2026-06-06T21:01:03Z",
+    "total": 3,
+    "schema_url": "registry/schema.json",
+    "vocabularies_url": "registry/vocabularies.yaml"
+  },
+  "vocabularies": {
+    "systems": [
+      "ArchivesSpace",
+      "DSpace",
+      "CollectionSpace",
+      "VIVO",
+      "Fedora",
+      "Other"
+    ],
+    "integration_types": [
+      "Linking",
+      "Deposit",
+      "Metadata Harvesting (OAI-PMH)",
+      "Search/Discovery",
+      "Bidirectional Sync",
+      "Other"
+    ],
+    "protocols": [
+      "SWORD v2",
+      "SWORD v3",
+      "OAI-PMH v2",
+      "REST API",
+      "SPARQL",
+      "Custom/Bespoke",
+      "Other"
+    ],
+    "statuses": [
+      "Active",
+      "Experimental",
+      "Deprecated",
+      "Retired",
+      "Recalled"
+    ]
+  },
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "ArchivesSpace digital object linking to DSpace via REST API",
+      "source_system": [
+        "ArchivesSpace"
+      ],
+      "target_system": [
+        "DSpace"
+      ],
+      "integration_type": "Linking",
+      "protocol": [
+        "REST API"
+      ],
+      "status": "Active",
+      "description": "Bidirectional URI linking between ArchivesSpace digital objects and DSpace items\nusing REST APIs on both sides. Supports single-item linking (A1) and bulk\nlinking from a DSpace collection (A2) via repeated application of the same\nlink contract.\n",
+      "submitted_by": "LYRASIS Interoperability Project (seed record)",
+      "submitted_date": "2026-06-06T12:00:00Z",
+      "prerequisites": "ArchivesSpace 3.4+ with REST enabled; DSpace 7.x or 9.x with REST API;\nservice accounts on both systems; configured metadata field for AS URI on DSpace\n(default dc.identifier.uri).\n",
+      "configuration_notes": "See specs/A2-dspace-bulk-linking.md for LinkMap JSON, DSpace Discovery search,\nAS full-POST update pattern, and DSpace metadata PATCH.\n",
+      "related_spec_url": "https://github.com/lyrasisorghome/InteroperabilityProject/blob/main/specs/A2-dspace-bulk-linking.md",
+      "min_system_version": [
+        "ArchivesSpace 3.4",
+        "DSpace 7.3"
+      ],
+      "def_system_version": [
+        "ArchivesSpace 3.5",
+        "DSpace 9.0"
+      ],
+      "tags": [
+        "finding aid",
+        "digitization",
+        "bidirectional",
+        "REST"
+      ],
+      "license": "CC-BY-4.0",
+      "updated_date": "2026-06-06T12:00:00Z",
+      "flagged": false
+    },
+    {
+      "id": "a3b1c2d4-e5f6-7890-abcd-ef1234567890",
+      "title": "CollectionSpace OAI-PMH metadata provider for discovery harvesters",
+      "source_system": [
+        "CollectionSpace"
+      ],
+      "target_system": [
+        "Other"
+      ],
+      "integration_type": "Metadata Harvesting (OAI-PMH)",
+      "protocol": [
+        "OAI-PMH v2"
+      ],
+      "status": "Active",
+      "description": "Expose CollectionSpace collection and object metadata via an OAI-PMH 2.0\nprovider so external discovery systems (VuFind, Blacklight, regional portals)\ncan harvest records. Does not move binaries; harvesters consume descriptive metadata.\n",
+      "submitted_by": "LYRASIS Interoperability Project (seed record)",
+      "submitted_date": "2026-06-06T12:00:00Z",
+      "prerequisites": "CollectionSpace with OAI-PMH provider configured; harvester supporting OAI-PMH 2.0\nand desired metadata prefix (typically oai_dc).\n",
+      "configuration_notes": "See specs/C1-cs-oai-pmh.md for Identify, ListRecords, and admin configuration\npaths. Target system is listed as Other because harvester choice varies by institution.\n",
+      "related_spec_url": "https://github.com/lyrasisorghome/InteroperabilityProject/blob/main/specs/C1-cs-oai-pmh.md",
+      "tags": [
+        "OAI-PMH",
+        "discovery",
+        "harvest"
+      ],
+      "license": "CC-BY-4.0",
+      "updated_date": "2026-06-06T12:00:00Z",
+      "flagged": false
+    },
+    {
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "title": "VIVO publication deposit to DSpace via SWORD v2",
+      "source_system": [
+        "VIVO"
+      ],
+      "target_system": [
+        "DSpace"
+      ],
+      "integration_type": "Deposit",
+      "protocol": [
+        "SWORD v2"
+      ],
+      "status": "Active",
+      "description": "Researcher-facing deposit workflow from VIVO publication records to a DSpace\ninstitutional repository using SWORD v2 AtomPub. Covers service document\ndiscovery, metadata package deposit, and optional link-back on the VIVO profile.\n",
+      "submitted_by": "LYRASIS Interoperability Project (seed record)",
+      "submitted_date": "2026-06-06T12:00:00Z",
+      "prerequisites": "DSpace with SWORD v2 enabled; VIVO with configured deposit target; shared or\nper-researcher IR credentials per institution policy.\n",
+      "configuration_notes": "PoC targets DSpace SWORD v2 (not v3). See specs/V1-vivo-sword-deposit.md for\nadmin configuration, deposit HTTP sequence, and metadata mapping gaps.\n",
+      "related_spec_url": "https://github.com/lyrasisorghome/InteroperabilityProject/blob/main/specs/V1-vivo-sword-deposit.md",
+      "tags": [
+        "SWORD",
+        "researcher workflow",
+        "publication"
+      ],
+      "license": "CC-BY-4.0",
+      "updated_date": "2026-06-06T12:00:00Z",
+      "flagged": false
+    }
+  ]
+}

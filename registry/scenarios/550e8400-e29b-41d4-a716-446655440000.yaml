@@ -1,0 +1,39 @@
+id: 550e8400-e29b-41d4-a716-446655440000
+title: ArchivesSpace digital object linking to DSpace via REST API
+source_system:
+  - ArchivesSpace
+target_system:
+  - DSpace
+integration_type: Linking
+protocol:
+  - REST API
+status: Active
+description: |
+  Bidirectional URI linking between ArchivesSpace digital objects and DSpace items
+  using REST APIs on both sides. Supports single-item linking (A1) and bulk
+  linking from a DSpace collection (A2) via repeated application of the same
+  link contract.
+submitted_by: LYRASIS Interoperability Project (seed record)
+submitted_date: "2026-06-06T12:00:00Z"
+prerequisites: |
+  ArchivesSpace 3.4+ with REST enabled; DSpace 7.x or 9.x with REST API;
+  service accounts on both systems; configured metadata field for AS URI on DSpace
+  (default dc.identifier.uri).
+configuration_notes: |
+  See specs/A2-dspace-bulk-linking.md for LinkMap JSON, DSpace Discovery search,
+  AS full-POST update pattern, and DSpace metadata PATCH.
+related_spec_url: https://github.com/lyrasisorghome/InteroperabilityProject/blob/main/specs/A2-dspace-bulk-linking.md
+min_system_version:
+  - ArchivesSpace 3.4
+  - DSpace 7.3
+def_system_version:
+  - ArchivesSpace 3.5
+  - DSpace 9.0
+tags:
+  - finding aid
+  - digitization
+  - bidirectional
+  - REST
+license: CC-BY-4.0
+updated_date: "2026-06-06T12:00:00Z"
+flagged: false

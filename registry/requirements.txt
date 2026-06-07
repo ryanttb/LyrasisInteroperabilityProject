@@ -1,0 +1,3 @@
+# Dependencies for registry validation scripts (CI and local use).
+pyyaml>=6.0
+jsonschema>=4.20

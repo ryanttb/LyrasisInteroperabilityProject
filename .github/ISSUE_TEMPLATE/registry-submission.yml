@@ -1,0 +1,137 @@
+name: Registry submission
+description: Propose a new integration scenario record for the F1 registry (maintainer will open a PR).
+title: "Registry: [short title]"
+labels:
+  - Registry
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form if you prefer not to edit YAML directly. A maintainer will create
+        `registry/scenarios/{uuid}.yaml` from your answers and open a pull request.
+
+        For direct contribution, see [registry/README.md](../registry/README.md).
+
+  - type: input
+    id: title
+    attributes:
+      label: Integration title
+      description: Short descriptive name
+      placeholder: ArchivesSpace digital object linking to DSpace via REST API
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: source_system
+    attributes:
+      label: Source system(s)
+      options:
+        - label: ArchivesSpace
+        - label: DSpace
+        - label: CollectionSpace
+        - label: VIVO
+        - label: Fedora
+        - label: Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: target_system
+    attributes:
+      label: Target system(s)
+      options:
+        - label: ArchivesSpace
+        - label: DSpace
+        - label: CollectionSpace
+        - label: VIVO
+        - label: Fedora
+        - label: Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: integration_type
+    attributes:
+      label: Integration type
+      options:
+        - Linking
+        - Deposit
+        - Metadata Harvesting (OAI-PMH)
+        - Search/Discovery
+        - Bidirectional Sync
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: protocol
+    attributes:
+      label: Protocol(s)
+      options:
+        - label: SWORD v2
+        - label: SWORD v3
+        - label: OAI-PMH v2
+        - label: REST API
+        - label: SPARQL
+        - label: Custom/Bespoke
+        - label: Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Status
+      options:
+        - Active
+        - Experimental
+        - Deprecated
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What the integration does and what problem it solves (Markdown OK)
+    validations:
+      required: true
+
+  - type: input
+    id: submitted_by
+    attributes:
+      label: Institution / submitter name
+    validations:
+      required: true
+
+  - type: input
+    id: code_repository_url
+    attributes:
+      label: Code repository URL (optional)
+      placeholder: https://github.com/org/repo
+
+  - type: input
+    id: documentation_url
+    attributes:
+      label: Documentation URL (optional)
+
+  - type: input
+    id: related_spec_url
+    attributes:
+      label: Related LYRASIS spec URL (optional)
+
+  - type: textarea
+    id: prerequisites
+    attributes:
+      label: Prerequisites (optional)
+
+  - type: textarea
+    id: configuration_notes
+    attributes:
+      label: Configuration / replication notes (optional)
+
+  - type: input
+    id: tags
+    attributes:
+      label: Tags (comma-separated, optional)
+      placeholder: digitization, OAI-PMH, finding aid

@@ -1,0 +1,40 @@
+# Controlled vocabularies for the integration scenario registry.
+# Keep in sync with registry/schema.json enums.
+# Admins extend this file via PR; schema.json enums should be updated together.
+
+systems:
+  - ArchivesSpace
+  - DSpace
+  - CollectionSpace
+  - VIVO
+  - Fedora
+  - Other
+
+integration_types:
+  - Linking
+  - Deposit
+  - Metadata Harvesting (OAI-PMH)
+  - Search/Discovery
+  - Bidirectional Sync
+  - Other
+
+protocols:
+  - SWORD v2
+  - SWORD v3
+  - OAI-PMH v2
+  - REST API
+  - SPARQL
+  - Custom/Bespoke
+  - Other
+
+statuses:
+  - Active
+  - Experimental
+  - Deprecated
+  - Retired
+  - Recalled
+
+# Records with these statuses are omitted from the public index.json build.
+index_exclude_statuses:
+  - Retired
+  - Recalled

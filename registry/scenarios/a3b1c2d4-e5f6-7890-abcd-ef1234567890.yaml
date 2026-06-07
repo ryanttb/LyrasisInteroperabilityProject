@@ -1,0 +1,30 @@
+id: a3b1c2d4-e5f6-7890-abcd-ef1234567890
+title: CollectionSpace OAI-PMH metadata provider for discovery harvesters
+source_system:
+  - CollectionSpace
+target_system:
+  - Other
+integration_type: Metadata Harvesting (OAI-PMH)
+protocol:
+  - OAI-PMH v2
+status: Active
+description: |
+  Expose CollectionSpace collection and object metadata via an OAI-PMH 2.0
+  provider so external discovery systems (VuFind, Blacklight, regional portals)
+  can harvest records. Does not move binaries; harvesters consume descriptive metadata.
+submitted_by: LYRASIS Interoperability Project (seed record)
+submitted_date: "2026-06-06T12:00:00Z"
+prerequisites: |
+  CollectionSpace with OAI-PMH provider configured; harvester supporting OAI-PMH 2.0
+  and desired metadata prefix (typically oai_dc).
+configuration_notes: |
+  See specs/C1-cs-oai-pmh.md for Identify, ListRecords, and admin configuration
+  paths. Target system is listed as Other because harvester choice varies by institution.
+related_spec_url: https://github.com/lyrasisorghome/InteroperabilityProject/blob/main/specs/C1-cs-oai-pmh.md
+tags:
+  - OAI-PMH
+  - discovery
+  - harvest
+license: CC-BY-4.0
+updated_date: "2026-06-06T12:00:00Z"
+flagged: false
