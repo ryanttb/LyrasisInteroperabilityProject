@@ -502,7 +502,7 @@ sequenceDiagram
   GH->>CI: pull_request workflow
   CI->>CI: jsonschema validate,<br/>duplicate check,<br/>vocabulary check
   alt validation fails
-    CI-->>GH: Check fail; block merge
+    CI-->>GH: Check fail, block merge
   else validation passes
     CI-->>GH: Check pass
     GH->>A: Review request notification
