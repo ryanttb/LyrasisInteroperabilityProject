@@ -7,7 +7,7 @@ issues:
   - https://github.com/lyrasisorghome/InteroperabilityProject/issues/57
 related:
   - specs/F1-integration-scenario-registry.md
-last_synced: 2026-06-06
+last_synced: 2026-06-16
 version: 0.1-draft
 ---
 
@@ -65,7 +65,9 @@ Out of scope for v0.1:
 | Phase II API | Endpoint table exists; no request/response bodies |
 | G-10 Diagrams | Explicitly listed as missing |
 
-**Recommendation:** Define the **JSON record + REST contract first**, then map each operation to a concrete platform. The API is the spine; Google Sheets, GitHub, and a custom app are interchangeable backends that **implement the same shapes**.
+**Recommendation:** Define the **JSON record + REST contract first**, then map each operation to a concrete platform. The API is the spine; GitHub, Google Sheets, and a custom app are interchangeable backends that **implement the same shapes**.
+
+Platform options **A / B / C** below follow the same order as [`F1-integration-scenario-registry.md`](F1-integration-scenario-registry.md) (Google Doc sync): GitHub first, then Google, then dedicated app.
 
 ---
 
@@ -301,111 +303,7 @@ Content-Type: application/json
 
 ---
 
-## Platform option A — Google Forms + Sheets (+ optional AppSheet)
-
-**Best for:** Fastest Phase I delivery, non-developer admin, minimal hosting cost.
-
-**Weak fit for:** GitHub SSO requirement, rich version history, machine API without extra glue.
-
-### Architecture
-
-```mermaid
-flowchart TB
-  subgraph Submit["Submission"]
-    Form["Google Form\n(submission fields)"]
-    Sheet["Google Sheet\n(one row per record)"]
-    Form -->|"on submit"| Sheet
-  end
-  subgraph Admin["Administration"]
-    AdminUser["Global admin"]
-    VocabTab["Sheet tab: vocabularies"]
-    AdminUser --> Sheet
-    AdminUser --> VocabTab
-  end
-  subgraph Read["Read paths"]
-    Staff["Staff user"]
-    AppSheet["AppSheet / Looker Studio\n(filter UI)"]
-    SheetsAPI["Google Sheets API v4\n(service account)"]
-    Staff --> AppSheet
-    AppSheet --> Sheet
-    Machine["Machine client"] --> SheetsAPI
-    SheetsAPI --> Sheet
-  end
-  subgraph Auth["Authentication"]
-    GoogleAcct["Google account\n(contributors)"]
-    SA["Service account\n(read API)"]
-    GoogleAcct --> Form
-  end
-```
-
-### How requirements map
-
-| Requirement | Google implementation |
-|-------------|----------------------|
-| Deposit | Form → Sheet row; optional Form restrict to `@domain` or manual contributor list |
-| Search UI | AppSheet app or Looker Studio dashboard with source/target filters |
-| Controlled vocabularies | Separate Sheet tab; data validation on main tab columns |
-| Admin approval of users | Manual: share Form/Sheet edit access after review (no native SSO) |
-| GitHub SSO | **Not native** — use Google accounts or external IdP via Google Workspace |
-| Version history | Sheet **Version history** (file-level); per-row audit via Apps Script log tab |
-| Email notifications | Apps Script on Form submit → MailApp |
-| Public read API | Sheets API + service account; publish read-only JSON via Apps Script Web App |
-| UUID `id` | Apps Script on submit: generate UUID column |
-| No delete | Hide row or set `status=Retired`; filter views exclude retired |
-
-### Deposit sequence
-
-```mermaid
-sequenceDiagram
-  participant C as Contributor
-  participant F as Google Form
-  participant S as Google Sheet
-  participant AS as Apps Script
-  participant M as MailApp
-
-  C->>F: Submit integration record
-  F->>S: Append row (raw columns)
-  S->>AS: onFormSubmit trigger
-  AS->>AS: Validate enums, assign UUID,<br/>set submitted_date, build record_url
-  AS->>S: Write computed columns
-  AS->>M: Email admin (record submitted)
-  Note over S: Row not in public<br/>filter until status=Active<br/>(optional approval)
-```
-
-### Search sequence (AppSheet / API adapter)
-
-```mermaid
-sequenceDiagram
-  participant U as Staff user
-  participant UI as AppSheet / Looker
-  participant S as Google Sheet
-  participant API as Apps Script Web App
-  participant MC as Machine client
-
-  U->>UI: Filter source=Fedora, target=DSpace
-  UI->>S: Query filtered view
-  S-->>UI: Matching rows
-  UI-->>U: Record cards + outbound links
-
-  MC->>API: GET ?source_system=Fedora&target_system=DSpace
-  API->>S: Read range, map rows → JSON
-  API-->>MC: {"data":[…],"meta":{…}}
-```
-
-**Sheets column → JSON mapping:** One column per scalar field; pipe-delimited strings for multi-select (`ArchivesSpace|DSpace` → array). Apps Script Web App implements the logical API shape above.
-
-### Tradeoffs
-
-| Pros | Cons |
-|------|------|
-| Live in days; familiar to archivists | GitHub SSO not satisfied without compromise |
-| Built-in form validation | Weak per-field audit trail vs Git |
-| Sheets API enables read automation | Write API needs Apps Script; not REST-native |
-| Free tier sufficient for 10–15 seed records | "Matrix" UX needs AppSheet/Looker investment |
-
----
-
-## Platform option B — GitHub-native registry (recommended default)
+## Platform option A — GitHub-native registry (recommended default)
 
 **Best for:** GitHub SSO alignment, PR-based review, version control, LYRASIS already on GitHub, zero custom server for Phase I.
 
@@ -579,6 +477,110 @@ Embed link from Fedora Confluence / project site (per BS01 navigation — exact 
 
 ---
 
+## Platform option B — Google Forms + Sheets (+ optional AppSheet)
+
+**Best for:** Fastest Phase I delivery, non-developer admin, minimal hosting cost.
+
+**Weak fit for:** GitHub SSO requirement, rich version history, machine API without extra glue.
+
+### Architecture
+
+```mermaid
+flowchart TB
+  subgraph Submit["Submission"]
+    Form["Google Form\n(submission fields)"]
+    Sheet["Google Sheet\n(one row per record)"]
+    Form -->|"on submit"| Sheet
+  end
+  subgraph Admin["Administration"]
+    AdminUser["Global admin"]
+    VocabTab["Sheet tab: vocabularies"]
+    AdminUser --> Sheet
+    AdminUser --> VocabTab
+  end
+  subgraph Read["Read paths"]
+    Staff["Staff user"]
+    AppSheet["AppSheet / Looker Studio\n(filter UI)"]
+    SheetsAPI["Google Sheets API v4\n(service account)"]
+    Staff --> AppSheet
+    AppSheet --> Sheet
+    Machine["Machine client"] --> SheetsAPI
+    SheetsAPI --> Sheet
+  end
+  subgraph Auth["Authentication"]
+    GoogleAcct["Google account\n(contributors)"]
+    SA["Service account\n(read API)"]
+    GoogleAcct --> Form
+  end
+```
+
+### How requirements map: Google implementation
+
+| Requirement | Google implementation |
+|-------------|----------------------|
+| Deposit | Form → Sheet row; optional Form restrict to `@domain` or manual contributor list |
+| Search UI | AppSheet app or Looker Studio dashboard with source/target filters |
+| Controlled vocabularies | Separate Sheet tab; data validation on main tab columns |
+| Admin approval of users | Manual: share Form/Sheet edit access after review (no native SSO) |
+| GitHub SSO | **Not native** — use Google accounts or external IdP via Google Workspace |
+| Version history | Sheet **Version history** (file-level); per-row audit via Apps Script log tab |
+| Email notifications | Apps Script on Form submit → MailApp |
+| Public read API | Sheets API + service account; publish read-only JSON via Apps Script Web App |
+| UUID `id` | Apps Script on submit: generate UUID column |
+| No delete | Hide row or set `status=Retired`; filter views exclude retired |
+
+### Deposit sequence
+
+```mermaid
+sequenceDiagram
+  participant C as Contributor
+  participant F as Google Form
+  participant S as Google Sheet
+  participant AS as Apps Script
+  participant M as MailApp
+
+  C->>F: Submit integration record
+  F->>S: Append row (raw columns)
+  S->>AS: onFormSubmit trigger
+  AS->>AS: Validate enums, assign UUID,<br/>set submitted_date, build record_url
+  AS->>S: Write computed columns
+  AS->>M: Email admin (record submitted)
+  Note over S: Row not in public<br/>filter until status=Active<br/>(optional approval)
+```
+
+### Search sequence (AppSheet / API adapter)
+
+```mermaid
+sequenceDiagram
+  participant U as Staff user
+  participant UI as AppSheet / Looker
+  participant S as Google Sheet
+  participant API as Apps Script Web App
+  participant MC as Machine client
+
+  U->>UI: Filter source=Fedora, target=DSpace
+  UI->>S: Query filtered view
+  S-->>UI: Matching rows
+  UI-->>U: Record cards + outbound links
+
+  MC->>API: GET ?source_system=Fedora&target_system=DSpace
+  API->>S: Read range, map rows → JSON
+  API-->>MC: {"data":[…],"meta":{…}}
+```
+
+**Sheets column → JSON mapping:** One column per scalar field; pipe-delimited strings for multi-select (`ArchivesSpace|DSpace` → array). Apps Script Web App implements the logical API shape above.
+
+### Tradeoffs
+
+| Pros | Cons |
+|------|------|
+| Live in days; familiar to archivists | GitHub SSO not satisfied without compromise |
+| Built-in form validation | Weak per-field audit trail vs Git |
+| Sheets API enables read automation | Write API needs Apps Script; not REST-native |
+| Free tier sufficient for 10–15 seed records | "Matrix" UX needs AppSheet/Looker investment |
+
+---
+
 ## Platform option C — Dedicated database + web application
 
 **Best for:** Long-term product, non-GitHub contributors with rich UI, full REST API on day one.
@@ -652,20 +654,20 @@ sequenceDiagram
 
 ## Decision matrix
 
-| Criterion | A: Google | B: GitHub | C: Dedicated |
+| Criterion | A: GitHub | B: Google | C: Dedicated |
 |-----------|-----------|-----------|--------------|
-| Time to Phase I MVP | **Days–1 week** | **1–2 weeks** | 2–4+ months |
-| GitHub SSO | Poor | **Excellent** | Good (OAuth) |
-| Version history | Sheet history | **Git log** | Audit table |
-| PR / review workflow | Manual | **Native** | Custom |
-| Public read API | Apps Script adapter | **index.json** (+ wrapper later) | **Native REST** |
-| Non-dev contributors | **Excellent** (Forms) | Moderate (Issue Form helps) | Excellent (custom UI) |
-| Aligns with LYRASIS GitHub presence | Low | **High** | Medium |
-| June 2026 feasibility | High | **High** | Low unless staffed |
+| Time to Phase I MVP | **1–2 weeks** | **Days–1 week** | 2–4+ months |
+| GitHub SSO | **Excellent** | Poor | Good (OAuth) |
+| Version history | **Git log** | Sheet history | Audit table |
+| PR / review workflow | **Native** | Manual | Custom |
+| Public read API | **index.json** (+ wrapper later) | Apps Script adapter | **Native REST** |
+| Non-dev contributors | Moderate (Issue Form helps) | **Excellent** (Forms) | Excellent (custom UI) |
+| Aligns with LYRASIS GitHub presence | **High** | Low | Medium |
+| June 2026 feasibility | **High** | High | Low unless staffed |
 
 ### Recommended path
 
-**Phase I (June 2026): Option B — GitHub-native registry** in `lyrasisorghome` org, with:
+**Phase I (June 2026): Option A — GitHub-native registry** in `lyrasisorghome` org, with:
 
 - YAML records + JSON Schema validation in CI
 - GitHub Pages search UI (source × target matrix filters)
@@ -674,7 +676,7 @@ sequenceDiagram
 
 **Phase II:** Publish `registry/index.json` at stable URL; add optional Cloudflare Worker implementing the logical REST paths; or migrate to Option C if volume and UX demand it.
 
-**Option A** remains valid if Lyrasis insists on zero GitHub contribution friction and accepts Google accounts instead of GitHub SSO.
+**Option B** remains valid if Lyrasis insists on zero GitHub contribution friction and accepts Google accounts instead of GitHub SSO.
 
 ---
 
@@ -682,7 +684,7 @@ sequenceDiagram
 
 ### BS01 — Discover Fedora integrations (issue #58)
 
-| Step | Implementation (Option B) |
+| Step | Implementation (Option A) |
 |------|----------------------------|
 | Navigate from Confluence | Static link to GitHub Pages registry URL |
 | Interactive filter by tools in use | UI dropdowns bound to `source_system`, `target_system` |
@@ -746,7 +748,7 @@ Each seed record MUST include `related_spec_url` when a LYRASIS spec exists.
 | G-01 Duplicate detection | Canonical rules + 409/warnings |
 | G-02 Rate limiting | 429 policy on logical API |
 | G-03 Error scenarios | HTTP mapping table |
-| G-05 Version history | Git log (B) or audit table (C) |
+| G-05 Version history | Git log (A) or audit table (C) |
 | G-10 Diagrams | Mermaid architecture + sequence diagrams |
 | Integration Architecture blank rows | Three platform architectures |
 | Phase II API bodies | JSON examples throughout |
@@ -756,8 +758,8 @@ Each seed record MUST include `related_spec_url` when a LYRASIS spec exists.
 
 ## Next steps
 
-1. **Stakeholder pick:** Confirm Option B (GitHub) vs A (Google) vs C (build app) — one meeting, use decision matrix above.
-2. **Create registry repo** (if B): schema, CI, Pages stub, Issue Form, PR template.
+1. **Stakeholder pick:** Confirm Option A (GitHub) vs B (Google) vs C (build app) — one meeting, use decision matrix above.
+2. **Create registry repo** (if A): schema, CI, Pages stub, Issue Form, PR template.
 3. **Backfill seed records** from existing specs in this repo.
 4. **Fold** chosen platform specifics back into [`F1-integration-scenario-registry.md`](F1-integration-scenario-registry.md) Integration Architecture table (replace TBD rows).
 5. **Optional v0.2:** JSON Schema file in repo; OpenAPI 3 export from logical API section.
