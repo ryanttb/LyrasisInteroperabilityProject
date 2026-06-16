@@ -547,6 +547,26 @@ Minimal Phase I UI (Jekyll/Eleventy/React Single-Page Application (SPA) on Pages
 
 Embed link from Fedora Confluence / project site (per BS01 navigation — exact URL is a content decision, not technical).
 
+### How requirements map: GitHub implementation
+
+| Requirement | GitHub implementation |
+|-------------|----------------------|
+| **Read** | Public repository on default branch; anyone can read `registry/scenarios/*.yaml` and `registry/index.json` without authentication. |
+| **Deposit (primary)** | Contributor with write access (or fork + PR) adds `registry/scenarios/{uuid}.yaml` via **pull request**; GitHub Actions validates schema; reviewer **merges PR** → record is published. Merge applies to PRs, not Issues. |
+| **Deposit (secondary)** | **GitHub Issue Form** opens a structured Issue for contributors who prefer not to edit YAML. A maintainer or bot converts the Issue content to YAML, opens a **conversion PR**, and merges after review. The Issue itself is closed; it is not the registry record. |
+| **Search UI** | **GitHub Pages** hosts a static SPA (React, Eleventy, etc.) that fetches `registry/index.json` and filters by `source_system`, `target_system`, `integration_type`, `protocol`, `status`, and keyword. This is the registry search experience described in BS-01/BS-03. Native GitHub repo code search is an optional supplement for power users, not a substitute. |
+| **Controlled vocabularies** | `registry/vocabularies.yaml` and `registry/schema.json` enum definitions are the source of truth. Admins update vocabularies via PR. Issue Form dropdowns reference the same lists. Scenario YAML files **use** these values; they do not define them. |
+| **Admin approval of users** | Repository **Settings → Collaborators and Teams**: admin grants write/collaborator access after account approval. Unapproved users may still use the Issue Form (if Issues are open) but cannot merge PRs. |
+| **GitHub SSO** | Native GitHub login for all authenticated contributors and reviewers. |
+| **CI validation** | GitHub Actions on every PR touching `registry/**`: `validate_registry.py` (JSON Schema, filename ↔ `id` match, duplicate advisories); `build_registry_index.py --check` (ensures `index.json` matches YAML). Failed checks block merge. |
+| **Version history** | Per-record **`git log`** on `registry/scenarios/{uuid}.yaml` plus PR review history (comments, approvals). **Blame** is optional line-level attribution, not the primary audit mechanism. |
+| **Email notifications** | GitHub notification settings (watch repo, PR/Issue subscriptions). Partial mapping to parent spec role-based emails (account request, record submitted, etc.); no native per-role registry mailer. |
+| **Public read API** | Phase I: stable URL to **`registry/index.json`** (`raw.githubusercontent.com` or GitHub Pages). Phase II: optional Cloudflare Worker / Lambda implementing the logical `GET /api/v1/scenarios` contract over the same index. The generic GitHub REST API is for repo metadata, not registry search semantics. |
+| **UUID `id`** | **Issue Form path:** UUID assigned by maintainer or Actions when opening the conversion PR (`{uuid}.yaml` filename must match `id` field). **Direct PR path:** contributor may supply UUID in the PR, validated by CI; alternatively Actions generates UUID on first validation pass. Server-assigned semantics from BS-05 are satisfied at merge time, not by end users picking arbitrary IDs without validation. |
+| **Duplicate detection** | CI runs duplicate advisory rules from `validate_registry.py` (same submitter + systems + type; title similarity warnings). Default: warn on PR, do not hard-block. |
+| **Record approval / moderation** | Optional **merge gate**: PR review required before publish. Post-publish: reviewer sets `status: Recalled` or `flagged: true` via follow-up PR. Repo **Settings → Moderation** limits abusive interaction; it does not replace content review of registry records. |
+| **No delete** | Set `status: Retired` or `Recalled`; record excluded from `index.json` build but YAML file retained in repo for audit history. |
+
 ### Tradeoffs
 
 | Pros | Cons |
