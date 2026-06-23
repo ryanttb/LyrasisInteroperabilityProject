@@ -8,7 +8,7 @@ related:
   - specs/C1-cs-oai-pmh.md
   - proposal/cs-meeting-notes.md
 last_synced: 2026-06-23
-version: 0.2-draft
+version: 0.3-draft
 ---
 
 # C1: OAI-PMH Provider for CollectionSpace - High-Level Feature Design
@@ -53,7 +53,7 @@ Out of scope for v0.1 (defer to a lower-level design pass or client feedback):
 - Full XML schema examples for every verb/error response
 - Line-by-line Dublin Core mapping for every CollectionSpace profile
 - Harvester-side configuration (discovery system UI)
-- OAI **sets** hierarchy (Phase I returns `noSetHierarchy`; see meeting notes)
+- OAI **sets** hierarchy (deferred; `ListSets` returns `noSetHierarchy` - see meeting notes and Epic 5)
 - Procedure/authority record harvesting
 - Proof-of-concept GitHub repository (separate deliverable mentioned in meetings)
 
@@ -123,7 +123,7 @@ OAI harvest eligibility = the existing public-published state. Concretely:
 - A record is harvestable when it is public (Publish To includes *All* or *CollectionSpace Public Browser*) - the same switch staff already use for the public browser.
 - Which shortIds count is **configurable** (mirroring the gateway's `allowedPublishToValues`); default `all,cspacepub`. See `oai.harvestPublishToValues` below.
 
-**Intended consequence (confirm with product):** OAI exposure becomes *coupled* to public-browser exposure - a record cannot be harvested via OAI without also being public in the browser, and vice-versa. The feedback explicitly asks for this single public/not-public switch, so the coupling is a feature, not an accident. If a later phase needs OAI-only or browser-only publishing, that is when a per-channel "Publish To" target would be reintroduced (the originally-drafted approach). The standing question in the parent spec's gap table - *"refactor Publish To... to a simple publish toggle?"* - is compatible with this: a single toggle would set/clear the public term.
+**Intended consequence (confirm with product):** OAI exposure becomes *coupled* to public-browser exposure - a record cannot be harvested via OAI without also being public in the browser, and vice-versa. The feedback explicitly asks for this single public/not-public switch, so the coupling is a feature, not an accident. If later work needs OAI-only or browser-only publishing, that is when a per-channel "Publish To" target would be reintroduced (the originally-drafted approach). The standing question in the parent spec's gap table - *"refactor Publish To... to a simple publish toggle?"* - is compatible with this: a single toggle would set/clear the public term.
 
 ---
 
@@ -134,11 +134,11 @@ OAI harvest eligibility = the existing public-published state. Concretely:
 | A-01 | Target CollectionSpace **8.x** on Tomcat; REST services WorkAuthority Resource (WAR) exposes `/cspace-services/...` per tenant. |
 | A-02 | **Nuxeo** remains the system of record for collection objects and media metadata. |
 | A-03 | **Elasticsearch** is already deployed (public browser / advanced search); may host a dedicated harvest index. |
-| A-04 | Phase I record eligibility **reuses the existing public-published state**: a record is harvestable when its **Publish To** (`publishto`) list includes a public term (refName shortId `all` or `cspacepub`) - the same state that drives the public browser. **No new `publishto` value is added.** (Revised per program-team feedback; supersedes the earlier "add an OAI-PMH value" direction. See *How "publishing" works*.) |
-| A-05 | OAI **sets** are out of scope for Phase I; `ListSets` returns `noSetHierarchy`. |
+| A-04 | Record eligibility **reuses the existing public-published state**: a record is harvestable when its **Publish To** (`publishto`) list includes a public term (refName shortId `all` or `cspacepub`) - the same state that drives the public browser. **No new `publishto` value is added.** (Revised per program-team feedback; supersedes the earlier "add an OAI-PMH value" direction. See *How "publishing" works*.) |
+| A-05 | OAI **sets** are out of scope for this release; `ListSets` returns `noSetHierarchy`. |
 | A-06 | Harvesters are **external**; CollectionSpace exposes an anonymous HTTP endpoint when the feature is enabled. |
 | A-07 | A **scheduled refresh** (batch job + optional listener) prepares harvestable records; OAI verbs should not run heavy NXQL against live Nuxeo on every request (per meeting notes). |
-| A-08 | Dublin Core mapping is **fixed in code** per profile for Phase I (per meeting notes); extensibility is a Phase II concern. |
+| A-08 | Dublin Core mapping is **fixed in code** per profile (per meeting notes); configurable mapping is deferred (see Epic 5). |
 
 ---
 
@@ -203,7 +203,7 @@ Assume tenant `museum` and host `https://cs.example.edu`:
 | [collectionspace/cspace-public-gateway](https://github.com/collectionspace/cspace-public-gateway) | Anonymous proxy to services/ES | **Optional minor** - route `/oai` if harvesters must use gateway hostname |
 | Nuxeo platform extensions (under `services/`) | Document types, listeners | **Possible** - harvest record doctype or reuse ES-only index |
 
-**Not required for Phase I:** changes to `cspace-public-browser.js` (consumes ES for human search, not OAI).
+**Not required:** changes to `cspace-public-browser.js` (consumes ES for human search, not OAI).
 
 ---
 
@@ -284,7 +284,7 @@ services/oai/
       verb/
         IdentifyHandler.java
         ListMetadataFormatsHandler.java
-        ListSetsHandler.java          # returns noSetHierarchy (Phase I)
+        ListSetsHandler.java          # returns noSetHierarchy
         ListIdentifiersHandler.java
         ListRecordsHandler.java
         GetRecordHandler.java
@@ -394,7 +394,7 @@ Stored in **tenant bindings XML** and/or `{profile}-tenant.xml` in the **applica
 | `oai.harvestPublishToValues` | `all,cspacepub` | Publish To shortIds that make a record harvestable; mirrors the gateway's `allowedPublishToValues`. Default = the public-browser set (i.e. OAI eligibility == public state) |
 | `oai.harvestRefreshCron` | *(external)* | Document that ops scheduler invokes batch job - CS has no built-in cron |
 | `oai.metadataFormats` | `oai_dc` | ListMetadataFormats source of truth |
-| `oai.setSupportEnabled` | `false` | Phase I |
+| `oai.setSupportEnabled` | `false` | Sets deferred (Epic 5) |
 
 **Storage mechanism:** extend tenant service binding for a new `OaiClient.SERVICE_NAME` in `tenant-bindings-proto-unified.xml`, properties read at runtime via existing `ServiceMain.getTenantBindingConfigReader()`.
 
@@ -495,11 +495,11 @@ Pre-computing `metadataXml` at index time avoids mapping cost on every harvest r
 
 ---
 
-## OAI protocol surface (Phase I)
+## OAI protocol surface
 
 Inherited from parent spec; implementation mapping:
 
-| Verb | Phase I behavior | Handler |
+| Verb | Behavior | Handler |
 |------|------------------|---------|
 | `Identify` | Repository metadata from config | `IdentifyHandler` |
 | `ListMetadataFormats` | At minimum `oai_dc` | `ListMetadataFormatsHandler` |
@@ -520,7 +520,7 @@ Inherited from parent spec; implementation mapping:
 
 ## Delete and unpublish semantics
 
-CollectionSpace has multiple removal paths (meeting notes). Phase I must document behavior:
+CollectionSpace has multiple removal paths (meeting notes). This release must document behavior:
 
 | Event | Proposed OAI behavior |
 |-------|----------------------|
@@ -533,13 +533,13 @@ Reference: ArchivesSpace `OAIDeletion` / tombstone pass in [AS OAI repository](h
 
 ---
 
-## Dublin Core mapping (Phase I)
+## Dublin Core mapping
 
 | Source | Direction |
 |--------|-----------|
 | [Internal DC mapping draft (Confluence)](https://collectionspace.atlassian.net/wiki/spaces/CPD/pages/4081451009/Open+for+Internal+Comment+Dublin+Core+Mapping) | **Authoritative** for field choices |
 | [`C1-cs-oai-pmh.md` Anthro table](C1-cs-oai-pmh.md#default-dublin-core-field-mapping---anthro-profile) | Example for one profile |
-| Meeting notes | **Not user-configurable** in Phase I; no arbitrary XSLT upload |
+| Meeting notes | **Not user-configurable** in this release; no arbitrary XSLT upload |
 
 Implementation: one `OaiDcMapper` subclass or profile section per CollectionSpace profile; registered in `ProfileMapperRegistry` at startup from tenant profile id.
 
@@ -568,26 +568,28 @@ Media links: include public thumbnail URL in `dc:relation` when `oai.includeMedi
 | D-01 | Harvest store backend | Elasticsearch index vs Nuxeo harvest documents | **Elasticsearch** - aligns with public browser infra |
 | D-02 | Endpoint hostname | Services direct vs public gateway | **Services direct** unless institution requires single gateway URL |
 | D-03 | Endpoint authentication | Open vs IP allowlist vs token | **Open when enabled** (OAI convention); document risk |
-| D-04 | User-configurable DC mapping | Fixed code vs admin UI vs XSLT | **Fixed per profile** (Phase I) per meeting notes |
+| D-04 | User-configurable DC mapping | Fixed code vs admin UI vs XSLT | **Fixed per profile** per meeting notes |
 | D-05 | Publish To scope | Reuse public state vs new OAI target | **Resolved (per feedback): reuse the public/not-public state**; no `OAI-PMH` term. Confirm the coupling (OAI set == public-browser set) is acceptable, and whether `oai.harvestPublishToValues` should ever be allowed to differ from the gateway's `allowedPublishToValues` |
 | D-06 | Missing required DC fields | Block publish / exclude / empty elements | Recommend **warn in UI, exclude from harvest** until complete |
 | D-07 | Disabled endpoint HTTP code | 503 vs 404 vs OAI error document | Recommend **503** with plain text or minimal OAI error (G-11) |
-| D-08 | Metadata formats beyond `oai_dc` | Phase I vs II | **Phase II** unless C2 timeline requires MODS/LIDO |
+| D-08 | Metadata formats beyond `oai_dc` | Baseline vs later | **Defer (Epic 5)** unless C2 timeline requires MODS/LIDO |
 | D-09 | Listener vs batch-only refresh | Real-time index update vs scheduled only | **Both**: listener for low latency; batch for full rebuild |
 | D-10 | New permission name / role mapping | Greenfield vs extend Exports role | **New permission** per parent spec |
 
 ---
 
-## Suggested delivery phases
+## Suggested epics
 
-| Phase | Deliverable | Repos |
-|-------|-------------|-------|
+These are units of work, **not sequential phases** - the whole feature is a single delivery. The numbering is for reference only; several epics can proceed in parallel once Epic 1 establishes the harvest index (e.g. Admin UI and Staff workflow), and Epic 5 is the natural "later" work if the program team chooses to extend beyond the baseline.
+
+| Epic | Deliverable | Repos |
+|------|-------------|-------|
 | **0 - Spike** | Identify + ListMetadataFormats on static config; anonymous routing | `services` |
 | **1 - Core harvest** | Harvest index job, ListRecords/ListIdentifiers/GetRecord, `oai_dc` for one profile | `services`, `application` |
 | **2 - Admin UI** | Settings page, permission, enable/disable toggle | `cspace-ui.js`, `services` |
 | **3 - Staff workflow** | Reuse public Publish To state, bulk publish (existing workflow), delete/tombstone pass | `services`, `cspace-ui.js` |
 | **4 - Hardening** | Compression, resumption token edge cases, logging, additional profiles | `services` |
-| **II - Sets & formats** | ListSets, optional metadata prefixes | `services` |
+| **5 - Sets & formats** | ListSets, optional metadata prefixes | `services` |
 
 ---
 
@@ -607,3 +609,4 @@ Media links: include public thumbnail URL in `dc:relation` when `oai.includeMedi
 |---------|------|-------|
 | 0.1-draft | 2026-06-10 | Initial high-level feature design |
 | 0.2-draft | 2026-06-23 | Reworked "publishing" model per program-team feedback: OAI eligibility reuses the existing public/not-public state (Publish To shortId `all`/`cspacepub`) instead of adding an `OAI-PMH` publish target. Added *How "publishing" works* section; updated A-04, NXQL, config (`oai.harvestPublishToValues`), eligibility, Staff UI, data flow, deletes, and D-05. |
+| 0.3-draft | 2026-06-23 | Removed "phase" framing (feedback found it confusing): the work is a single delivery. Renamed "Suggested delivery phases" to "Suggested epics" (parallelizable units of work), renumbered the trailing "II - Sets & formats" to "5", and stripped "Phase I"/"Phase II" language throughout. |
