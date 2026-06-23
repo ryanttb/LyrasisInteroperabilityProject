@@ -7,8 +7,8 @@ issues:
 related:
   - specs/C1-cs-oai-pmh.md
   - proposal/cs-meeting-notes.md
-last_synced: 2026-06-10
-version: 0.1-draft
+last_synced: 2026-06-23
+version: 0.2-draft
 ---
 
 # C1: OAI-PMH Provider for CollectionSpace - High-Level Feature Design
@@ -67,6 +67,66 @@ Out of scope for v0.1 (defer to a lower-level design pass or client feedback):
 
 ---
 
+## How "publishing" works in CollectionSpace
+
+This is the central question raised in program-team feedback: *should OAI be a new "Publish To" target (a `Publish to OAI` option alongside `Publish to browser`), or simply a reuse of the existing public/not-public state?* Checked against the current codebase, the recommendation is **reuse the existing public state - do not add an `OAI-PMH` publish target.** This section documents the evidence so the decision is grounded in how the code actually behaves.
+
+### There is no boolean "Publish" field
+
+The parent behavior spec ([`C1-cs-oai-pmh.md`](C1-cs-oai-pmh.md)) refers to a *"'Publish' field"* that staff "toggle on" (BS03, and the Integration Architecture table). **No such field exists.** The real mechanism is **`Publish To`** (`publishTo`), a **repeating term-list field** backed by the `publishto` vocabulary. It is present on:
+
+- Collection objects - `collectionobjects_common:publishToList/publishTo`
+- Media - `media_common:publishToList/publishTo`
+- Exhibitions - `exhibitions_common:publishToList/publishTo`
+
+(See `cspace-ui.js` `src/plugins/recordTypes/{collectionobject,media,exhibition}/fields.js`; all use the term picker `source: 'publishto'`.)
+
+### "Published" = a Publish To term with shortId `all` or `cspacepub`
+
+A record is treated as publicly published when its `publishTo` list contains a term whose refName shortId is:
+
+- `all` - label *"All"*
+- `cspacepub` - label *"CollectionSpace Public Browser"*
+
+This is the actual gate used today, in two independent places:
+
+1. The Nuxeo -> Elasticsearch denormalizer that decides whether media/exhibition content is exposed (`services` `DefaultESDocumentWriter.isPublished`):
+
+```java
+String shortId = RefNameUtils.getItemShortId(value);
+if (shortId.equals("all") || shortId.equals("cspacepub")) {
+    isPublished = true;
+    break;
+}
+```
+
+2. The public gateway that fronts the public browser builds its Elasticsearch filter from configuration whose defaults are exactly these two shortids (`cspace-public-gateway` `application.yml`):
+
+```yaml
+es:
+  allowedRecordTypes: CollectionObject
+  recordTypes:
+    CollectionObject:
+      publishToField: collectionobjects_common:publishToList.shortid
+    Media:
+      publishToField: media_common:publishToList.shortid
+  allowedPublishToValues: cspacepub,all
+```
+
+So the public browser's record set is precisely *collection objects whose `publishToList.shortid` is in `{all, cspacepub}`*. This is the same set the program team already said OAI should mirror ("Should support what is published now in the public browser," 2026-03-27 notes).
+
+### Recommendation: reuse, don't extend
+
+OAI harvest eligibility = the existing public-published state. Concretely:
+
+- **No new `publishto` vocabulary term.** Remove `OAI-PMH` from the `publishto` picker and from every NXQL/ES predicate in this design.
+- A record is harvestable when it is public (Publish To includes *All* or *CollectionSpace Public Browser*) - the same switch staff already use for the public browser.
+- Which shortIds count is **configurable** (mirroring the gateway's `allowedPublishToValues`); default `all,cspacepub`. See `oai.harvestPublishToValues` below.
+
+**Intended consequence (confirm with product):** OAI exposure becomes *coupled* to public-browser exposure - a record cannot be harvested via OAI without also being public in the browser, and vice-versa. The feedback explicitly asks for this single public/not-public switch, so the coupling is a feature, not an accident. If a later phase needs OAI-only or browser-only publishing, that is when a per-channel "Publish To" target would be reintroduced (the originally-drafted approach). The standing question in the parent spec's gap table - *"refactor Publish To... to a simple publish toggle?"* - is compatible with this: a single toggle would set/clear the public term.
+
+---
+
 ## Assumptions
 
 | ID | Assumption |
@@ -74,7 +134,7 @@ Out of scope for v0.1 (defer to a lower-level design pass or client feedback):
 | A-01 | Target CollectionSpace **8.x** on Tomcat; REST services WorkAuthority Resource (WAR) exposes `/cspace-services/...` per tenant. |
 | A-02 | **Nuxeo** remains the system of record for collection objects and media metadata. |
 | A-03 | **Elasticsearch** is already deployed (public browser / advanced search); may host a dedicated harvest index. |
-| A-04 | Phase I record eligibility uses existing **Publish To** vocabulary (`publishto`), extended with an OAI-PMH value (per meeting notes). |
+| A-04 | Phase I record eligibility **reuses the existing public-published state**: a record is harvestable when its **Publish To** (`publishto`) list includes a public term (refName shortId `all` or `cspacepub`) - the same state that drives the public browser. **No new `publishto` value is added.** (Revised per program-team feedback; supersedes the earlier "add an OAI-PMH value" direction. See *How "publishing" works*.) |
 | A-05 | OAI **sets** are out of scope for Phase I; `ListSets` returns `noSetHierarchy`. |
 | A-06 | Harvesters are **external**; CollectionSpace exposes an anonymous HTTP endpoint when the feature is enabled. |
 | A-07 | A **scheduled refresh** (batch job + optional listener) prepares harvestable records; OAI verbs should not run heavy NXQL against live Nuxeo on every request (per meeting notes). |
@@ -165,7 +225,7 @@ CollectionSpace has **no OAI-PMH code today**. These patterns are the closest an
 |-----------|----------|---------------|
 | `PublicItemResource` | `services/common/.../publicitem/PublicItemResource.java` | Precedent for **anonymous** read endpoint backed by Nuxeo |
 | `PublicItemDocumentModelHandler` | `services/publicitem/.../nuxeo/` | URL generation for public media links in DC `relation`/`identifier` |
-| Publish To vocabulary | `cspace-ui.js` → `publishTo` / `publishToList` on media (and possibly collection object) | **Record-level opt-in** gate for harvest set |
+| Publish To (`publishto` vocab) | `publishTo`/`publishToList` on collection object, media, exhibition (`cspace-ui.js` `recordTypes/*/fields.js`); public predicate `publishToList.shortid ∈ {all, cspacepub}` (`cspace-public-gateway`, `DefaultESDocumentWriter`) | **Reuse the existing public state** as the harvest gate - no new term |
 
 ### Query, export, and bulk update
 
@@ -265,21 +325,25 @@ public class OaiResource extends AbstractResource {
 **`OaiHarvestIndexBatchJob`** - ETL from Nuxeo → harvest store:
 
 ```java
-// Pseudocode: select published collection objects, map to harvest records
-NXQL = """
-  SELECT * FROM CollectionObject
-  WHERE ecm:isProxy = 0
-    AND collectionobjects:publishTo/* IN ('OAI-PMH')
-  ORDER BY ecm:modified
-""";
-for (DocumentModel doc : nuxeoQuery(NXQL)) {
+// Pseudocode: select PUBLIC collection objects, map to harvest records.
+// Eligibility reuses the existing public state (the same set as the public browser):
+// the record's Publish To list contains a public term whose refName shortId is
+// "all" or "cspacepub". Configurable via oai.harvestPublishToValues (default: all,cspacepub).
+for (DocumentModel doc : findPublicCollectionObjects(from, until)) {
     HarvestRecord rec = mapper.toHarvestRecord(doc);
     rec.setOaiIdentifier(pidFactory.for(doc));
     rec.setDatestamp(doc.getModifiedDate()); // UTC seconds
     rec.setDeleted(false);
     harvestRepository.upsert(rec);
 }
-tombstonePass(); // mark soft-deletes, unpublish, hard-deletes per policy
+tombstonePass(); // mark records whose public term was cleared, soft-deletes, hard-deletes
+
+// findPublicCollectionObjects(...) should either:
+//   (a) read from the existing public Elasticsearch index (recommended; see D-01), or
+//   (b) run NXQL over collectionobjects_common:publishToList and filter in code with
+//       RefNameUtils.getItemShortId(value) ∈ {all, cspacepub}. Publish To is stored as
+//       refNames, so a pure-NXQL shortId predicate is awkward; reusing the public index
+//       (a) keeps OAI eligibility identical to the public browser by construction.
 ```
 
 **`ListRecordsHandler`** - read from harvest store, not live Nuxeo:
@@ -302,8 +366,9 @@ return Response.ok(records).build();
 | `services/pom.xml` | Add `<module>oai</module>` |
 | `CollectionSpaceJaxRsApplication.java` | `singletons.add(new OaiResource());` or `addResourceToMapAndSingletons` |
 | `tenant-bindings-proto-unified.xml` | OAI service binding, batch jobs, optional listener, index definition |
-| `publishto` vocabulary source | Add term `OAI-PMH` (exact label TBD with product) |
 | Profile `*-tenant-bindings.delta.xml` | Register profile-specific `OaiDcMapper` |
+
+> **No change to the `publishto` vocabulary.** Earlier drafts added an `OAI-PMH` term; that is removed. OAI eligibility reuses the existing public terms (`all`, `cspacepub`). See *How "publishing" works*.
 
 ---
 
@@ -326,6 +391,7 @@ Stored in **tenant bindings XML** and/or `{profile}-tenant.xml` in the **applica
 | `oai.resumptionTokenTtlSeconds` | `3600` | Token cache TTL |
 | `oai.compressionSupported` | `true` | gzip response encoding |
 | `oai.harvestIndexId` | `oai-harvest` | ES index name or Nuxeo doc type namespace |
+| `oai.harvestPublishToValues` | `all,cspacepub` | Publish To shortIds that make a record harvestable; mirrors the gateway's `allowedPublishToValues`. Default = the public-browser set (i.e. OAI eligibility == public state) |
 | `oai.harvestRefreshCron` | *(external)* | Document that ops scheduler invokes batch job - CS has no built-in cron |
 | `oai.metadataFormats` | `oai_dc` | ListMetadataFormats source of truth |
 | `oai.setSupportEnabled` | `false` | Phase I |
@@ -358,10 +424,10 @@ POST /cspace-services/oai/config/test     → optional Identify dry-run for admi
 
 | Field | Where | Rule |
 |-------|-------|------|
-| `publishTo` / `publishToList` | Collection object and/or media record | Must include OAI-PMH term for record to enter harvest index |
+| `publishTo` / `publishToList` | Collection object (and media, for media links) | Must include a **public** term (refName shortId `all` or `cspacepub`) - the same state that publishes to the public browser. No OAI-specific term |
 | `ecm:modified` / record audit | Nuxeo | Becomes OAI **datestamp** (UTC, seconds) |
 
-Bulk update: **`OaiPublishBatchJob`** invoked from Staff UI with an advanced-search query URI (same invoke pattern as export/report batch jobs per meeting notes).
+Bulk update: marking records public is the **existing publish-to-public workflow**. A bulk data update can set the public Publish To term from an advanced-search query URI (same invoke pattern as export/report batch jobs per meeting notes). Because eligibility reuses the public state, this does not need to be an OAI-specific job; `OaiPublishBatchJob` is optional sugar over the existing publish mechanism.
 
 ---
 
@@ -370,9 +436,9 @@ Bulk update: **`OaiPublishBatchJob`** invoked from Staff UI with an advanced-sea
 | Location | Change |
 |----------|--------|
 | **Administration → OAI-PMH Settings** (new) | New invocable plugin under admin/tools; mirrors ArchivesSpace "Manage OAI-PMH Settings" |
-| **Publish To** field | Ensure `OAI-PMH` appears in `publishto` vocabulary picker on relevant record types |
-| **Bulk data update** | Expose `OaiPublishBatchJob` from Tools or batch job menu with search query input |
-| **Record editor cue** | Help text or indicator when Publish To includes OAI-PMH (parent spec BS03) |
+| **Publish To** field | **No change** - a record becomes harvestable when marked public (Publish To = *All* or *CollectionSpace Public Browser*), the same control already used for the public browser |
+| **Bulk data update** | Reuse the existing publish-to-public bulk workflow (set the public Publish To term from a search query); no OAI-specific job required |
+| **Record editor cue** | Optional help text clarifying that **public** records are also exposed via OAI-PMH (parent spec BS03) |
 
 Proposed plugin path: `src/plugins/invocables/oaiSettings/` (or under existing admin plugin structure).
 
@@ -393,7 +459,7 @@ sequenceDiagram
   participant ES as Elasticsearch
   participant Harv as Harvester
 
-  Staff->>UI: Set Publish To = OAI-PMH
+  Staff->>UI: Set Publish To = Public (All / CollectionSpace Public Browser)
   UI->>Svc: PUT collectionobject
   Svc->>Nuxeo: save document
   Note over Svc: Optional listener queues incremental update
@@ -458,7 +524,7 @@ CollectionSpace has multiple removal paths (meeting notes). Phase I must documen
 
 | Event | Proposed OAI behavior |
 |-------|----------------------|
-| Publish To cleared | Harvest index row updated; next List* shows `status="deleted"` tombstone |
+| Public Publish To term cleared (record no longer public) | Harvest index row updated; next List* shows `status="deleted"` tombstone |
 | Soft delete | Tombstone with last known identifier |
 | Hard delete | Tombstone retained in harvest index with `deleted=true` (persistent policy); identifier may be CSID-based |
 | Incremental harvest | Harvester diffs ListIdentifiers; deleted headers signal removal in discovery layer |
@@ -503,7 +569,7 @@ Media links: include public thumbnail URL in `dc:relation` when `oai.includeMedi
 | D-02 | Endpoint hostname | Services direct vs public gateway | **Services direct** unless institution requires single gateway URL |
 | D-03 | Endpoint authentication | Open vs IP allowlist vs token | **Open when enabled** (OAI convention); document risk |
 | D-04 | User-configurable DC mapping | Fixed code vs admin UI vs XSLT | **Fixed per profile** (Phase I) per meeting notes |
-| D-05 | Publish To scope | Media only vs collection object vs both | Confirm which record types carry `publishTo` today for public browser |
+| D-05 | Publish To scope | Reuse public state vs new OAI target | **Resolved (per feedback): reuse the public/not-public state**; no `OAI-PMH` term. Confirm the coupling (OAI set == public-browser set) is acceptable, and whether `oai.harvestPublishToValues` should ever be allowed to differ from the gateway's `allowedPublishToValues` |
 | D-06 | Missing required DC fields | Block publish / exclude / empty elements | Recommend **warn in UI, exclude from harvest** until complete |
 | D-07 | Disabled endpoint HTTP code | 503 vs 404 vs OAI error document | Recommend **503** with plain text or minimal OAI error (G-11) |
 | D-08 | Metadata formats beyond `oai_dc` | Phase I vs II | **Phase II** unless C2 timeline requires MODS/LIDO |
@@ -519,7 +585,7 @@ Media links: include public thumbnail URL in `dc:relation` when `oai.includeMedi
 | **0 - Spike** | Identify + ListMetadataFormats on static config; anonymous routing | `services` |
 | **1 - Core harvest** | Harvest index job, ListRecords/ListIdentifiers/GetRecord, `oai_dc` for one profile | `services`, `application` |
 | **2 - Admin UI** | Settings page, permission, enable/disable toggle | `cspace-ui.js`, `services` |
-| **3 - Staff workflow** | Publish To term, bulk publish job, delete/tombstone pass | `services`, `cspace-ui.js` |
+| **3 - Staff workflow** | Reuse public Publish To state, bulk publish (existing workflow), delete/tombstone pass | `services`, `cspace-ui.js` |
 | **4 - Hardening** | Compression, resumption token edge cases, logging, additional profiles | `services` |
 | **II - Sets & formats** | ListSets, optional metadata prefixes | `services` |
 
@@ -540,3 +606,4 @@ Media links: include public thumbnail URL in `dc:relation` when `oai.includeMedi
 | Version | Date | Notes |
 |---------|------|-------|
 | 0.1-draft | 2026-06-10 | Initial high-level feature design |
+| 0.2-draft | 2026-06-23 | Reworked "publishing" model per program-team feedback: OAI eligibility reuses the existing public/not-public state (Publish To shortId `all`/`cspacepub`) instead of adding an `OAI-PMH` publish target. Added *How "publishing" works* section; updated A-04, NXQL, config (`oai.harvestPublishToValues`), eligibility, Staff UI, data flow, deletes, and D-05. |
