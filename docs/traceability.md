@@ -14,8 +14,8 @@ Maps **approved use cases** and **behavior scenarios** to **technical specificat
 |----------|--------------|------|------------------|-------------------------|---------------|-------------|------------------|
 | A1 | A1 | ArchivesSpace, DSpace | DSpace Search API; one-time link | [#7](https://github.com/lyrasisorghome/InteroperabilityProject/issues/7) | [`specs/A1-bidirectional-linking-as-ds.md`](../specs/A1-bidirectional-linking-as-ds.md) | Draft v0.2 | **In progress** — see gaps below |
 | A2 | A2 | ArchivesSpace, DSpace | DSpace Search API; one-time link | [#44](https://github.com/lyrasisorghome/InteroperabilityProject/issues/44) | [`specs/A1-bidirectional-linking-as-ds.md`](../specs/A1-bidirectional-linking-as-ds.md) | Draft v0.2 | **In progress** — see gaps below |
-| A3 | A3 | ArchivesSpace, DSpace | SWORD deposit + AS digital object | [#45](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) | — | — | Not started |
-| A4 | A4 | ArchivesSpace, DSpace | SWORD batch deposit | [#52](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52) | — | — | Not started |
+| A3 | A3 | ArchivesSpace, DSpace | SWORD deposit + AS digital object | [#45](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) | [`specs/A3-4-as-sword-deposit.md`](../specs/A3-4-as-sword-deposit.md), [`specs/A3-4-dev-high-as-sword-deposit.md`](../specs/A3-4-dev-high-as-sword-deposit.md) | Draft v0.3 / dev-high v0.1 | **In progress** — see gaps below |
+| A4 | A4 | ArchivesSpace, DSpace | SWORD batch deposit | [#52](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52) | [`specs/A3-4-as-sword-deposit.md`](../specs/A3-4-as-sword-deposit.md), [`specs/A3-4-dev-high-as-sword-deposit.md`](../specs/A3-4-dev-high-as-sword-deposit.md) | Draft v0.3 / dev-high v0.1 | **In progress** — dev-high defers wizard; `DepositBatch` covers batch |
 | C1 | C1 | CollectionSpace | OAI-PMH 2.0 provider | [#46](https://github.com/lyrasisorghome/InteroperabilityProject/issues/46) | [`specs/C1-cs-oai-pmh.md`](../specs/C1-cs-oai-pmh.md) | Draft v0.2 | **In progress** — see gaps below |
 | C2 | C2 | CollectionSpace, ArchivesSpace | OAI-PMH (CS) + shared discovery | [#47](https://github.com/lyrasisorghome/InteroperabilityProject/issues/47) | — (may extend C1 spec) | — | Not started |
 | C3 | C3 | CollectionSpace, ArchivesSpace | Cross-system search / field mapping | [#51](https://github.com/lyrasisorghome/InteroperabilityProject/issues/51) | — | — | Not started |
@@ -31,9 +31,9 @@ Maps **approved use cases** and **behavior scenarios** to **technical specificat
 
 | CST | Scenarios | Spec documents (repo) | RFP workflow covered? |
 |-----|-----------|-------------------------|------------------------|
-| ArchivesSpace | A1, A2, A3, A4, C2, C3, F1 | [`A1-bidirectional-linking-as-ds`](../specs/A1-bidirectional-linking-as-ds.md) | **Partial** (A1, A2 only) |
+| ArchivesSpace | A1, A2, A3, A4, C2, C3, F1 | [`A1-bidirectional-linking-as-ds`](../specs/A1-bidirectional-linking-as-ds.md), [`A3-4-as-sword-deposit`](../specs/A3-4-as-sword-deposit.md), [`A3-4-dev-high-as-sword-deposit`](../specs/A3-4-dev-high-as-sword-deposit.md) | **Partial** (A1, A2, A3/A4) |
 | CollectionSpace | C1, C2, C3, F1 | [`C1-cs-oai-pmh`](../specs/C1-cs-oai-pmh.md) | **Partial** (C1 only) |
-| DSpace | A1–A4, F1, V1, D1*, D2* | [`A1-bidirectional-linking-as-ds`](../specs/A1-bidirectional-linking-as-ds.md), [`V1-vivo-sword-deposit`](../specs/V1-vivo-sword-deposit.md) | **Partial** (A1/A2, V1) |
+| DSpace | A1–A4, F1, V1, D1*, D2* | [`A1-bidirectional-linking-as-ds`](../specs/A1-bidirectional-linking-as-ds.md), [`A3-4-as-sword-deposit`](../specs/A3-4-as-sword-deposit.md), [`V1-vivo-sword-deposit`](../specs/V1-vivo-sword-deposit.md) | **Partial** (A1/A2, A3/A4, V1) |
 | Fedora | F1 | [`F1-integration-scenario-registry`](../specs/F1-integration-scenario-registry.md) | Pending (likely via F1) |
 | VIVO | V1, V2, F1 | [`V1-vivo-sword-deposit`](../specs/V1-vivo-sword-deposit.md) | **Partial** (V1 only) |
 
@@ -182,6 +182,8 @@ Track resolution in the spec’s “Open Questions and Specification Gaps” sec
 | File | Scenarios | Version | Source |
 |------|-----------|---------|--------|
 | [`specs/A1-bidirectional-linking-as-ds.md`](../specs/A1-bidirectional-linking-as-ds.md) | A1, A2 | 0.2 draft | [Google Doc](https://docs.google.com/document/d/1GVP7IgAcK4kcJyl27Fobm_EuDJZTnh_IbUl5C61jNYw) |
+| [`specs/A3-4-as-sword-deposit.md`](../specs/A3-4-as-sword-deposit.md) | A3, A4 | 0.3 draft | [Google Doc](https://docs.google.com/document/d/1s9IQHVJMjTGMrK_rt38mDC1PvkAVCWv117MsJN6vF-w) |
+| [`specs/A3-4-dev-high-as-sword-deposit.md`](../specs/A3-4-dev-high-as-sword-deposit.md) | A3, A4 | 0.1 dev-high draft | consultant draft (bridges A3-4 behavior spec) |
 | [`specs/C1-cs-oai-pmh.md`](../specs/C1-cs-oai-pmh.md) | C1 (C2 may overlap) | 0.2 draft | [Google Doc](https://docs.google.com/document/d/1TuCEufv8ekB6XgZT3aEr8g7ciW4d-xPvLh7T8tLswO4) |
 | [`specs/F1-integration-scenario-registry.md`](../specs/F1-integration-scenario-registry.md) | F1, D1, D2 | 0.1 draft | [Google Doc](https://docs.google.com/document/d/1_ecWifpqfNN5PrmN3ZnqcjlgAqrYTbtNMWLDi5x6y1s) |
 | [`specs/V1-vivo-sword-deposit.md`](../specs/V1-vivo-sword-deposit.md) | V1 | 0.1 draft | [Google Doc](https://docs.google.com/document/d/1YWPMBOrjoQC3e_cQUTZu3BKsgVw0TH0cqh7-o_UNV8U) |
