@@ -11,7 +11,7 @@ related:
   - specs/V1-dev-high-vivo-sword-deposit.md
   - specs/A1-2-dev-high-bidirectional-linking-as-ds.md
 last_synced: 2026-07-19
-version: 0.2-draft
+version: 0.3-draft
 ---
 
 # A3-4: ArchivesSpace SWORD Deposits — High-Level Feature Design
@@ -39,28 +39,40 @@ version: 0.2-draft
 
 ## Purpose and scope
 
-Define **how ArchivesSpace would implement** a workflow in which a staff user selects **one or more local files** and deposits each to a configured SWORD v2 repository. For each deposited file, ArchivesSpace populates a **File Version** whose `file_uri` is the **public item URL** returned by the deposit.
+Define **how ArchivesSpace would implement** a workflow in which a staff user deposits **one local file** for a **child Archival Object** to a configured SWORD v2 repository, then populates a **File Version** whose `file_uri` is the **public item URL** returned by the deposit. The staff user repeats this per child Archival Object, moving down the tree.
 
-The **primary entry point is the Archival Object** (per stakeholder feedback): a staff user editing an Archival Object opens **Instances → Add Digital Object → Create**, which renders the native **"Create Digital Object"** modal containing the standard **File Versions** subrecord form. The deposit control lives in that File Versions form. Because the same subrecord form is reused on the standalone Digital Object / Digital Object Component edit screens, those are supported entry points too, at no extra cost.
+The **primary entry point is the child Archival Object** (per stakeholder feedback and user studies). The staff user clicks a child Archival Object in the resource tree, then opens **Instances → Add Digital Object → Create**, which renders the native **"Create Digital Object"** modal containing the standard **File Versions** subrecord form. The deposit control lives in that File Versions form. Because the same subrecord form is reused on the standalone Digital Object / Digital Object Component edit screens, those are supported entry points too, at no extra cost.
+
+**Observed workflow (from user studies):**
+
+1. Staff user browses to an Archival Object; existing child Archival Objects appear in the resource tree (upper panel).
+2. If a needed child Archival Object does not exist, the staff user creates one per binary they intend to deposit (**Archival Objects always exist before a deposit is attempted**), then returns to the parent.
+3. Staff user clicks a **child Archival Object** in the tree.
+4. Staff user does **Instances → Add Digital Object → Create → "Upload File Version"** → the plugin deposits the single file via SWORD and populates the File Version's `file_uri`.
+5. Staff user clicks **"Create and Link"**.
+6. Staff user clicks the **next child Archival Object** in the tree and repeats.
+
+The design optimizes for **one binary per child Archival Object, quickly repeated across children** — not for attaching many binaries to a single Digital Object. Tree navigation between children is native ArchivesSpace behavior; the plugin adds no special multi-object mode.
 
 This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md), which defines *what*: roles, config table, BS01–BS03, ES01–ES04, gaps G-01–G-10) to implementation planning (*which plugin, controllers, JSONModels, and client library would change*).
 
-**In scope for v0.1/v0.2:**
+**In scope for v0.1–v0.3:**
 
 1. ArchivesSpace deployment/plugin context and where HTTP requests land
-2. Entry from the **Archival Object → Instances → Add Digital Object → Create** modal (primary), plus the standalone **Digital Object** / **Digital Object Component** edit screens (same subrecord form)
-3. An **"Upload File Version(s)"** control aligned with the existing **"Add File Version"** button, in every context where the File Versions subrecord form is rendered
-4. **Multi-select browser upload**; each file deposited independently
-5. `DepositEntry` (one file) and `DepositBatch` (N files) contracts
+2. Entry from the **child Archival Object → Instances → Add Digital Object → Create** modal (primary), plus the standalone **Digital Object** / **Digital Object Component** edit screens (same subrecord form)
+3. An **"Upload File Version"** control aligned with the existing **"Add File Version"** button, in every context where the File Versions subrecord form is rendered
+4. **Single-file browser upload** — one binary per deposit (v0.3 simplification; multi-select dropped)
+5. The `DepositEntry` contract (one file → one item → one File Version). `DepositBatch` is retained only as the abstraction for the deferred wizard
 6. A version-abstracted SWORD client (v2 now; v3 adapter stub)
-7. **In-form File Version population** (rows are filled with the returned `file_uri` and persisted on the record's normal Save / "Create and Link")
+7. **In-form File Version population** (the row is filled with the returned `file_uri` and persisted on the record's normal Save / "Create and Link")
 8. Configuration model at the repository level
 9. Error handling mapped to parent ES01–ES04
 
-**Out of scope for v0.1/v0.2 (deferred):**
+**Out of scope for v0.1–v0.3 (deferred):**
 
+- **Multi-file / multi-select** upload to a single Digital Object (de-prioritized per user studies: the real workflow is one binary per child Archival Object)
 - The multi-page **deposit wizard** and drag-and-drop file→archival-object mapping described in parent BS02/BS03 (*explicitly deferred at client direction*; `DepositBatch` is designed so the wizard can be layered on later)
-- **Bulk / multi-Archival-Object** creation of Digital Objects in one pass (the batch drag-drop mapping). *Single* Digital Object creation from one Archival Object via the native "Create Digital Object" modal **is in scope** (it is the primary entry point); only the bulk mapping across many AOs is deferred.
+- **Bulk / multi-Archival-Object** creation of Digital Objects in one pass (the batch drag-drop mapping). *Single* Digital Object creation from one child Archival Object via the native "Create Digital Object" modal **is in scope** (it is the primary entry point); only the bulk mapping across many AOs is deferred.
 - Full descriptive-metadata mapping AS → DSpace (**open**, pending ArchivesSpace + DSpace team input; see G-05 / M-01)
 - SWORD v3 implementation
 - Re-deposit / update-in-place of previously deposited content (G-10)
@@ -77,13 +89,13 @@ This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`]
 | Parent gap | What is missing for developers |
 |------------|--------------------------------|
 | G-02 | Whether AS stores binaries. **Resolved here:** it does not — AS is a CMS, not a DAMS; binaries come from the **staff user's browser** at deposit time. |
-| G-03 | Where the deposit initiates. **Resolved here:** primarily the **Archival Object → Instances → Add Digital Object → Create** modal, via an "Upload File Version(s)" control in the **File Versions** subrecord section, aligned with "Add File Version". The same control appears wherever that subrecord form renders (standalone Digital Object / Component edit). |
+| G-03 | Where the deposit initiates. **Resolved here:** primarily the **Archival Object → Instances → Add Digital Object → Create** modal, via an "Upload File Version" control in the **File Versions** subrecord section, aligned with "Add File Version". The same control appears wherever that subrecord form renders (standalone Digital Object / Component edit). |
 | G-06 | Item/file granularity. **Resolved here:** **1:1:1** — one file → one DSpace item → one AS File Version. |
 | G-04 / G-05 | Package format and metadata mapping. **Partially open:** v0.1 uses **binary deposit**; descriptive-metadata mapping is a **placeholder** (M-01). |
 | G-08 | SWORD version abstraction. **Resolved here:** `SwordProtocolAdapter` interface, v2 impl + v3 stub. |
 | Client library | Not named. **Resolved here:** `sword2ruby` *or* a thin native client behind the adapter. |
 
-**Design stance:** implement the **atomic deposit primitive** (`DepositEntry`) that the "Upload File Version(s)" button needs, and express bulk upload as `DepositBatch` = N × `DepositEntry`. This mirrors the `LinkEntry`/`LinkBatch` pattern from [`A1-2-dev-high-bidirectional-linking-as-ds.md`](A1-2-dev-high-bidirectional-linking-as-ds.md) and keeps the deferred wizard a pure orchestration layer over the same primitive.
+**Design stance:** implement the **atomic deposit primitive** (`DepositEntry`) that the "Upload File Version" button needs — one file per child Archival Object. The shipping control calls `DepositEntry` directly. `DepositBatch` = N × `DepositEntry` is kept as the abstraction the **deferred wizard** would orchestrate, mirroring the `LinkEntry`/`LinkBatch` pattern from [`A1-2-dev-high-bidirectional-linking-as-ds.md`](A1-2-dev-high-bidirectional-linking-as-ds.md) — but it is not exercised by the v0.3 single-file UI.
 
 ---
 
@@ -96,13 +108,14 @@ This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`]
 | A-03 | The target repository exposes a **Service Document URL** and ≥1 **Collection** accepting the configured deposit type (typically `application/pdf` / binary). |
 | A-04 | **ArchivesSpace does not persist deposited binaries.** Files are streamed from the browser through the plugin to the SWORD endpoint and held only transiently. Only the returned **item URL** (and optional edit IRI) are written to AS. |
 | A-05 | Deposit orchestration runs in the **staff frontend plugin**, which already holds an authenticated backend session, so binaries never transit the JSON backend API. |
-| A-06 | **Granularity is 1:1:1**: each selected file → one repository item → one `file_version` on the target Digital Object / Component (whether pre-existing or being created inline from an Archival Object). |
+| A-06 | **Granularity is 1:1:1**: one uploaded file → one repository item → one `file_version` on the target Digital Object / Component (whether pre-existing or being created inline from a child Archival Object). |
 | A-07 | The `file_uri` written to AS is the repository's **public item URL** (e.g. `{dspaceBaseUrl}/handle/{handle}`), because PUI end users and staff both click it. |
 | A-08 | **Authentication (v2)** is **HTTP Basic Auth** with a service credential configured per AS repository (parent G-01; per-user credentials deferred). |
 | A-09 | Deposit is **synchronous from the user's perspective** in v0.1. Even if the endpoint returns SWORD **In-Progress**, AS still writes the File Version immediately; staff manage visibility via existing **Publish?** and **Make Representative** controls. |
 | A-10 | **Descriptive metadata mapping AS → repository is not finalized.** v0.1 deposits binaries with a **minimal, configurable metadata stub** (at least a title/slug); full mapping is M-01 pending AS + DSpace teams. |
 | A-11 | **The target Digital Object may not be persisted at deposit time.** In the primary Archival Object flow, the "Create Digital Object" modal holds an *unsaved* record (verified 2026-07-19: no ID/URI until "Create and Link"). Therefore the deposit **must not** depend on a saved AS record: it obtains the `file_uri` and **populates the in-memory File Version row**; AS persists everything on the record's normal Save / "Create and Link". This is the same client-side subrecord form used on the standalone Digital Object edit screen. |
-| A-12 | **Metadata for the SWORD package is sourced from the deposit context, not a saved Digital Object**: the values being entered in the modal (Title, Identifier) and/or the **parent Archival Object** (which *is* persisted and has a ref). See M-01. |
+| A-12 | **Metadata for the SWORD package is sourced from the deposit context, not a saved Digital Object**: the values being entered in the modal (Title, Identifier) and/or the **parent (child) Archival Object** (which *is* persisted and has a ref). See M-01. |
+| A-13 | **One binary per child Archival Object; Archival Objects always pre-exist the deposit.** Staff create the child Archival Objects first, then deposit a single file for each, iterating across the tree. The plugin therefore needs no multi-file or multi-object mode; each deposit is a single `DepositEntry` and switching between children is native tree navigation. |
 
 ---
 
@@ -140,7 +153,7 @@ flowchart TB
 | Actor | Role |
 |-------|------|
 | **AS Administrator** | Configures per-repository SWORD endpoint(s), credentials, default collection, protocol version, master enable (parent BS01). |
-| **AS Staff User** | Editing an Archival Object (primary) or a Digital Object / Component, selects one or more local files and triggers deposit; reviews the resulting File Versions; sets Publish / Representative; saves via "Create and Link" / Save. |
+| **AS Staff User** | Selects a child Archival Object (primary) — or edits a Digital Object / Component — chooses **one** local file and triggers deposit; reviews the resulting File Version; sets Publish / Representative; saves via "Create and Link" / Save; moves to the next child Archival Object and repeats. |
 | **Repository/Collection manager** | Configures SWORD permissions and collections on the target repository (outside AS). |
 | **PUI end user** | Clicks the `file_uri` link to the deposited item (no deposit UI). |
 | **sword_deposit plugin** (new) | Validates uploads, deposits via SWORD, parses receipts, writes File Versions, logs outcomes. |
@@ -154,7 +167,7 @@ Assume staff host `https://as.example.edu` (SUI):
 | **Archival Object edit (primary)** | `/resources/16/edit#tree::archival_object_1646` | Instances → Add Digital Object → **Create** opens the "Create Digital Object" modal (no dedicated route; modal is inline) |
 | Digital Object edit (existing) | `/digital_objects/27/edit` | Same File Versions subrecord form |
 | Digital Object Component edit (existing) | `/digital_objects/27/edit#tree::digital_object_component_1` | Same File Versions subrecord form |
-| **Proposed upload endpoint** | `POST /plugins/sword_deposit/deposit` | Multipart; params: repo id, files[], optional parent Archival Object ref, in-form metadata (title/identifier) |
+| **Proposed upload endpoint** | `POST /plugins/sword_deposit/deposit` | Multipart; params: repo id, **one** file, optional parent Archival Object ref, in-form metadata (title/identifier) |
 | **Proposed config** | `/plugins/sword_deposit/settings?repo_id=…` | Admin-only SWORD settings |
 | Repository management (existing) | `/repositories` | Settings linked from here (parent §Configuration Location) |
 
@@ -165,7 +178,7 @@ Assume staff host `https://as.example.edu` (SUI):
 | Area | Role in feature | Expected change level |
 |------|-----------------|------------------------|
 | **New plugin** `plugins/sword_deposit/` | Primary — controllers, service, SWORD adapter, config, JS, views, locales | **Major (new)** |
-| Staff UI subrecord form for `file_version` | Add "Upload File Version(s)" control beside "Add File Version"; render resulting File Versions | **Moderate (via plugin override/partial)** |
+| Staff UI subrecord form for `file_version` | Add "Upload File Version" control beside "Add File Version"; render resulting File Versions | **Moderate (via plugin override/partial)** |
 | `digital_object` / `digital_object_component` JSONModels | Append `file_versions[]` after deposit (no schema change) | **None (data only)** |
 | Repository configuration UI | Host SWORD Deposit Settings section | **Minor (plugin-provided)** |
 | SWORD client dependency | `sword2ruby` gem *or* vendored native client | **Dependency** |
@@ -202,7 +215,7 @@ ArchivesSpace has **no SWORD code today**. Closest reusable machinery:
 
 | Component | Reuse |
 |-----------|-------|
-| Native subrecord form submit ("Create and Link" / Save) | **Default write path (A-11):** deposited File Version rows are populated in the form and persisted by AS's own save. Works whether the Digital Object pre-exists or is being created inline. No plugin-side JSONModel write required. |
+| Native subrecord form submit ("Create and Link" / Save) | **Default write path (A-11):** the deposited File Version row is populated in the form and persisted by AS's own save. Works whether the Digital Object pre-exists or is being created inline. No plugin-side JSONModel write required. |
 | `JSONModel(:digital_object)` / `JSONModel(:digital_object_component)` (`find → append → save`) | **Optional path only** for a *pre-existing, already-saved* Digital Object if immediate auto-save is later chosen (D-03). Not usable in the unsaved AO-create modal. AS has no PATCH; this is the GET→merge→POST equivalent. |
 | Frontend authenticated backend session | Plugin controller reuses the staff session's backend token — no separate auth. |
 
@@ -227,10 +240,10 @@ plugins/sword_deposit/
       sword_deposit_controller.rb        # POST /plugins/sword_deposit/deposit (multipart)
       sword_settings_controller.rb       # repository SWORD settings CRUD + Test connection
     views/
-      sword_deposit/_upload_button.html.erb   # "Upload File Version(s)" control
+      sword_deposit/_upload_button.html.erb   # "Upload File Version" control
       sword_settings/index.html.erb
     assets/
-      sword_deposit.js                   # multi-select input, progress, append File Versions
+      sword_deposit.js                   # single-file input, progress, populate File Version
     locales/en.yml                       # button labels, errors, tooltips
     plugin_init.rb                        # inject button partial into file_version form
   backend/
@@ -259,17 +272,17 @@ plugins/sword_deposit/
 
 ```ruby
 # POST /plugins/sword_deposit/deposit  (multipart)
-# params: repo_id, collection_href, files[],
+# params: repo_id, collection_href, file,   # ONE file (A-13)
 #         metadata: { title:, identifier: },  # in-form values (DO may be unsaved, A-11)
-#         parent_ao_ref                        # optional: persisted Archival Object for DC (A-12)
+#         parent_ao_ref                        # optional: persisted child Archival Object for DC (A-12)
 def deposit
   cfg    = SwordEndpointConfig.for_repository(params[:repo_id])   # enabled? (ES01)
   ctx    = DepositContext.new(metadata: params[:metadata],
                               parent_ao_ref: params[:parent_ao_ref])
-  report = SwordDepositService.new(cfg, current_backend_session)
-             .deposit_batch(Array(params[:files]), ctx,
+  result = SwordDepositService.new(cfg, current_backend_session)
+             .deposit_entry(params[:file], ctx,
                             collection_href: params[:collection_href])
-  render json: report   # per-file { filename, status, file_uri, error } -> JS fills rows
+  render json: result   # { filename, status, file_uri, error } -> JS fills one row
 end
 ```
 
@@ -287,7 +300,9 @@ ensure
   package&.dispose                                          # drop transient bytes (A-04)
 end
 
-# DepositBatch: N x DepositEntry, independent success/failure (parent G-07 -> fail-forward)
+# DepositBatch: retained ONLY for the deferred wizard (batch across archival objects).
+# The shipping "Upload File Version" control deposits one file per child Archival Object,
+# so it calls deposit_entry directly. N x DepositEntry, fail-forward (parent G-07).
 def deposit_batch(files, ctx, collection_href:)
   DepositReport.new(files.map { |f|
     begin;  deposit_entry(f, ctx, collection_href: collection_href)
@@ -317,21 +332,21 @@ end
 
 ### File Version population (client-side, default path)
 
-On a successful deposit the browser receives `{ filename, file_uri }` per file and
+On a successful deposit the browser receives `{ filename, file_uri }` and
 **injects a populated File Version row** into the current subrecord form — the same DOM the
 native "Add File Version" button drives — then AS persists it on Save / "Create and Link"
 (A-11). No plugin-side JSONModel write is needed, so this works identically in the unsaved
-Archival Object → Create Digital Object modal and on a saved Digital Object edit screen.
+child Archival Object → Create Digital Object modal and on a saved Digital Object edit screen.
 
 ```javascript
-// sword_deposit.js (sketch): after POST /plugins/sword_deposit/deposit
-report.forEach(function (r) {
+// sword_deposit.js (sketch): after POST /plugins/sword_deposit/deposit (one file)
+function onDepositResult(r) {
   if (r.status !== "ok") { showRowError(r.filename, r.error); return; } // ES02/03/04
   var $row = addFileVersionRow();          // reuse AS subrecord add
   $row.find("[name$='[file_uri]']").val(r.file_uri);   // public handle URL (A-07)
   $row.find("[name$='[publish]']").prop("checked", true); // A-09; staff can toggle
   // is_representative left unchecked -> staff uses "Make Representative"
-});
+}
 // persistence happens on the native "Create and Link" / Save submit
 ```
 
@@ -391,16 +406,16 @@ Reached via **Repository management → SWORD Deposit Settings** (parent §Confi
 
 The control lives **in the File Versions subrecord section**, aligned with **Add File Version** (per the observation that "Add File Version" simply appends an empty File Version row). Because that subrecord form is shared, a single injection covers all entry points.
 
-**Primary flow (Archival Object):** Instances → **Add Digital Object** → dropdown → **Create** → the "Create Digital Object" modal opens → scroll to **File Versions** → **"Upload File Version(s)"** → select files → rows are populated with returned URIs → **"Create and Link"** persists the Digital Object, its File Versions, and the instance link to the Archival Object.
+**Primary flow (child Archival Object):** click a child Archival Object in the tree → Instances → **Add Digital Object** → dropdown → **Create** → the "Create Digital Object" modal opens → scroll to **File Versions** → **"Upload File Version"** → select **one** file → the row is populated with the returned URI → **"Create and Link"** persists the Digital Object, its File Version, and the instance link to the Archival Object → click the **next** child Archival Object and repeat.
 
 | Element | Behavior |
 |---------|----------|
-| Entry contexts | The "Create Digital Object" modal (from an Archival Object), the standalone Digital Object edit screen, and the Digital Object Component edit screen — anywhere the File Versions subrecord renders. |
-| **"Upload File Version(s)"** button | Rendered next to "Add File Version" when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
-| Hidden file input | `<input type="file" multiple accept=".pdf">` — **multi-select** (A-06). |
+| Entry contexts | The "Create Digital Object" modal (from a child Archival Object), the standalone Digital Object edit screen, and the Digital Object Component edit screen — anywhere the File Versions subrecord renders. |
+| **"Upload File Version"** button | Rendered next to "Add File Version" when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
+| Hidden file input | `<input type="file" accept=".pdf">` — **single file** (A-13; no `multiple`). |
 | Collection select | Shown only if >1 collection or no default; else uses `default_collection_href`; "None" allowed (parent BS02). |
-| Progress + result | Per-file progress; on success, **populate a File Version row** (with `file_uri`, `publish` checked) exactly as if the user had added it manually; on failure, inline error (ES02/ES03/ES04). |
-| Save semantics | Deposited File Versions are populated into the in-memory subrecord form and persisted on the record's normal **Save** / **"Create and Link"** (A-11). No auto-save is required; see D-03. |
+| Progress + result | Upload progress; on success, **populate the File Version row** (with `file_uri`, `publish` checked) exactly as if the user had added it manually; on failure, inline error (ES02/ES03/ES04). |
+| Save semantics | The deposited File Version is populated into the in-memory subrecord form and persisted on the record's normal **Save** / **"Create and Link"** (A-11). No auto-save is required; see D-03. |
 
 **i18n:** add keys under `frontend/locales/en.yml` following AS locale conventions.
 
@@ -465,23 +480,22 @@ sequenceDiagram
   participant DS as SWORD endpoint
   participant B as AS JSON backend
 
-  S->>UI: AO Instances → Add Digital Object → Create; Upload File Version(s), select files
-  UI->>C: POST /plugins/sword_deposit/deposit (files[], metadata, parent_ao_ref)
-  loop each file (DepositBatch → DepositEntry)
-    C->>Svc: deposit_entry(file, ctx)
-    Svc->>A: deposit(collection, binary + minimal metadata)
-    A->>DS: SWORD POST (Basic auth)
-    DS-->>A: 201 DepositReceipt (+ item URL, edit IRI)
-    Svc-->>C: DepositResult(ok, file_uri = public handle URL)
-  end
-  C-->>UI: per-file report { filename, file_uri }
-  UI-->>UI: populate File Version rows (file_uri, Publish checked)
+  S->>UI: Click child Archival Object → Instances → Add Digital Object → Create; Upload File Version, select one file
+  UI->>C: POST /plugins/sword_deposit/deposit (file, metadata, parent_ao_ref)
+  C->>Svc: deposit_entry(file, ctx)
+  Svc->>A: deposit(collection, binary + minimal metadata)
+  A->>DS: SWORD POST (Basic auth)
+  DS-->>A: 201 DepositReceipt (+ item URL, edit IRI)
+  Svc-->>C: DepositResult(ok, file_uri = public handle URL)
+  C-->>UI: result { filename, file_uri }
+  UI-->>UI: populate File Version row (file_uri, Publish checked)
   S->>UI: Click "Create and Link"
-  UI->>B: POST digital_object (+ file_versions) + link instance to Archival Object
+  UI->>B: POST digital_object (+ file_version) + link instance to Archival Object
   B-->>UI: Created + Linked (PUI shows file_uri)
+  Note over S,B: Staff clicks next child Archival Object and repeats
 ```
 
-> The deposit itself performs **no AS write**; it returns each `file_uri` for in-form population (A-11). AS persistence — creating the Digital Object, its File Versions, and the instance link back to the Archival Object — happens on the native **"Create and Link"** submit. On a standalone Digital Object edit screen the flow is identical except the final submit is **Save** on the existing record.
+> The deposit itself performs **no AS write**; it returns the `file_uri` for in-form population (A-11). AS persistence — creating the Digital Object, its File Version, and the instance link back to the child Archival Object — happens on the native **"Create and Link"** submit. On a standalone Digital Object edit screen the flow is identical except the final submit is **Save** on the existing record. The staff user then selects the next child Archival Object in the tree and repeats (A-13).
 
 ---
 
@@ -489,7 +503,7 @@ sequenceDiagram
 
 | ID | Condition | User-visible behavior | Log / notes |
 |----|-----------|----------------------|-------------|
-| ES01 | SWORD not configured/enabled for repository | "Upload File Version(s)" hidden or disabled with tooltip "SWORD deposit is not configured…" | — |
+| ES01 | SWORD not configured/enabled for repository | "Upload File Version" hidden or disabled with tooltip "SWORD deposit is not configured…" | — |
 | ES02 | Endpoint HTTP 4xx/5xx or SWORD Error Document | Plain-language error per file; **no File Version** created for that file | Full SWORD body + timestamp + user in audit log; retry/cancel offered |
 | ES03 | Auth failure (401/403) | "Authentication failed. Your SWORD credentials may be expired or incorrect. Contact your administrator." | No deposit attempted; **never log password** |
 | ES04 | Missing required metadata (once mapping exists) | Block the file; prompt to fill/acknowledge required fields | Which fields are required depends on M-01 |
@@ -519,8 +533,8 @@ sequenceDiagram
 |------|-------------|------|
 | **0 — Spike** | Native v2 binary deposit against a test DSpace SWORD endpoint; parse receipt → item URL | `lib/sword` |
 | **1 — Config** | Per-repository SWORD settings + Test connection + enable flag | frontend/backend config |
-| **2 — Upload UI** | "Upload File Version(s)" control, multi-select, progress, in-form row population; injected into the File Versions subrecord in the AO "Create Digital Object" modal **and** the DO/DOC edit screens | frontend assets/views |
-| **3 — Deposit + in-form population** | `DepositEntry`/`DepositBatch`, metadata from context (form + parent AO), return `file_uri`; persistence via native Save / "Create and Link" | `lib` |
+| **2 — Upload UI** | "Upload File Version" control (single file), progress, in-form row population; injected into the File Versions subrecord in the child AO "Create Digital Object" modal **and** the DO/DOC edit screens | frontend assets/views |
+| **3 — Deposit + in-form population** | `DepositEntry` (single file), metadata from context (form + parent AO), return `file_uri`; persistence via native Save / "Create and Link" | `lib` |
 | **4 — Hardening** | ES01–ES04, partial-batch fail-forward, audit log, credential encryption | plugin-wide |
 | **5 — Metadata (M-01)** | Resolve AS→DC mapping; packaged deposit if required | `lib/metadata` |
 | **6 — Wizard (deferred)** | Batch file→archival-object mapping over `DepositBatch` | frontend |
@@ -544,5 +558,6 @@ sequenceDiagram
 
 | Version | Date | Notes |
 |---------|------|-------|
-| 0.1-draft | 2026-07-17 | Initial high-level design: AS plugin map, "Upload File Version(s)" multi-select control, `DepositEntry`/`DepositBatch` (1:1:1), public-handle `file_uri`, v2 adapter (native vs `sword2ruby`), immediate File Version write with Publish/Representative deferred to staff, metadata mapping as M-01 placeholder. Wizard deferred. |
+| 0.1-draft | 2026-07-17 | Initial high-level design: AS plugin map, "Upload File Version" multi-select control, `DepositEntry`/`DepositBatch` (1:1:1), public-handle `file_uri`, v2 adapter (native vs `sword2ruby`), immediate File Version write with Publish/Representative deferred to staff, metadata mapping as M-01 placeholder. Wizard deferred. |
 | 0.2-draft | 2026-07-19 | Made the **Archival Object** the primary entry point (Instances → Add Digital Object → Create → File Versions), verified against the ArchivesSpace sandbox. Reframed write-back as **in-form File Version population** persisted on "Create and Link" / Save (A-11), since the modal's Digital Object is unsaved at deposit time; server-side JSONModel write demoted to an optional path for pre-existing records. Deposit no longer requires a saved target; metadata now sourced from in-form values and/or the parent Archival Object (A-12). Updated purpose, scope, actors, URL shapes, reuse map, UI touchpoints, data flow, decisions (D-03, M-01), and epics. |
+| 0.3-draft | 2026-07-19 | Simplified to match user studies: **one binary per child Archival Object**, repeated across the tree. **Dropped multi-select**; single-file upload only (`DepositEntry`; `DepositBatch` retained solely for the deferred wizard). Button label singular ("Upload File Version"). Added the observed step-by-step workflow and A-13 (AOs always pre-exist; per-child iteration is native tree navigation). Updated purpose/scope, in/out-of-scope, design stance, actors, controller/service and JS sketches, UI touchpoints, and data-flow diagram. |
