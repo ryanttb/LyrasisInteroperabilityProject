@@ -11,7 +11,7 @@ Exported feature specifications (Markdown). Each file should include front matte
 | [C3-cs-as-shared-discovery.md](C3-cs-as-shared-discovery.md) | [C3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/51) | Draft v0.1 |
 | [C3-dev-high-cs-as-shared-discovery.md](C3-dev-high-cs-as-shared-discovery.md) | [C3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/51) | Dev-high draft v0.1 |
 | [A3-4-as-sword-deposit.md](A3-4-as-sword-deposit.md) | [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45), [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52) | Draft v0.3 |
-| [A3-4-dev-high-as-sword-deposit.md](A3-4-dev-high-as-sword-deposit.md) | [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45), [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52) | Dev-high draft v0.1 |
+| [A3-4-dev-high-as-sword-deposit.md](A3-4-dev-high-as-sword-deposit.md) | [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45), [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52) | Dev-high draft v0.2 |
 | [F1-integration-scenario-registry.md](F1-integration-scenario-registry.md) | [F1](https://github.com/lyrasisorghome/InteroperabilityProject/issues/58) | Draft v0.1 |
 | [V1-vivo-sword-deposit.md](V1-vivo-sword-deposit.md) | [V1](https://github.com/lyrasisorghome/InteroperabilityProject/issues/54) | Draft v0.1 |
 
