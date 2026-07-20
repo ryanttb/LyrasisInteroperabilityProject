@@ -11,7 +11,7 @@ related:
   - specs/V1-dev-high-vivo-sword-deposit.md
   - specs/A1-2-dev-high-bidirectional-linking-as-ds.md
 last_synced: 2026-07-20
-version: 0.5-draft
+version: 0.6-draft
 ---
 
 # A3-4: ArchivesSpace SWORD Deposits — High-Level Feature Design
@@ -20,7 +20,7 @@ version: 0.5-draft
 
 **Scenarios:** [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) and [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52)
 
-**Status:** Draft v0.5 — high-level feature design; closes the *where-in-the-codebase* and *where-does-it-initiate* gaps in [`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md) (notably Gap G-03). Defines **three deposit modes** sharing one SWORD primitive: **Mode A** — single deposit from a child Archival Object (in-form population; verified against the ArchivesSpace sandbox, 2026-07-19); **Mode B** — a parent-level **"Upload and Link"** panel that deposits one local file per immediate child Archival Object and creates+links a Digital Object for each (server-side); **Mode C** — an **"Upload Digital Objects"** button on a single Archival Object that multi-selects files and creates one Digital Object per file (Title = filename, Identifier = returned URI), all linked to that Archival Object.
+**Status:** Draft v0.6 — high-level feature design; closes the *where-in-the-codebase* and *where-does-it-initiate* gaps in [`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md) (notably Gap G-03). Defines **three deposit modes** sharing one SWORD primitive: **Mode A** — single deposit from a child Archival Object (in-form population; verified against the ArchivesSpace sandbox, 2026-07-19); **Mode B** — a parent-level **"Upload and Link"** panel that deposits one local file per immediate child Archival Object and creates+links a Digital Object for each (server-side); **Mode C** — an **"Upload Digital Objects"** button on a single Archival Object that multi-selects files and creates one Digital Object per file, all linked to that Archival Object. **All modes write the returned URI to both fields** (v0.6): the Digital Object **Identifier** (`digital_object_id`, a *required* field — the canonical/original URI) **and** a **File Version** `file_uri` (so the PUI renders a clickable link; sandbox-verified 2026-07-20).
 
 **Systems:** ArchivesSpace staff UI (SUI, Rails) and JSON backend API; ArchivesSpace PUI (display only); DSpace SWORD v2 endpoint (7.x/9.x contract); extensible to other SWORD-compliant repositories and SWORD v3.
 
@@ -39,17 +39,19 @@ version: 0.5-draft
 
 ## Purpose and scope
 
-Define **how ArchivesSpace would implement** a workflow in which a staff user deposits local files to a configured SWORD v2 repository and records the returned **public item URL(s)** on ArchivesSpace records. All three modes below share the same SWORD deposit primitive (`DepositEntry`) and the same per-file granularity — one file → one repository item — differing only in **what AS record the returned URI lands on** and **how it is persisted**.
+Define **how ArchivesSpace would implement** a workflow in which a staff user deposits local files to a configured SWORD v2 repository and records the returned **public item URL(s)** on ArchivesSpace records. All three modes below share the same SWORD deposit primitive (`DepositEntry`) and the same per-file granularity — one file → one repository item → one Digital Object — differing only in **which Archival Object the Digital Object links to** and **how it is persisted**.
+
+**Where the returned URI is written (all modes, v0.6):** each deposited file yields a Digital Object whose **Identifier** (`digital_object_id`) is set to the returned URI — this is a *required* field and holds the canonical/original location — **and** which carries a **File Version** whose `file_uri` is the same URI, so the ArchivesSpace PUI renders a clickable "view online" link (sandbox-verified 2026-07-20: an Identifier-only Digital Object shows the URI as plain text, whereas a File Version renders a clickable button). See A-19 and D-14.
 
 ### Three deposit modes
 
 | Mode | Entry point | Scope | Result per file | AS write path |
 |------|-------------|-------|-----------------|---------------|
-| **A — Single deposit** | A **child Archival Object** → Instances → Add Digital Object → **Create** modal | One file for one child AO, repeated manually down the tree | One **File Version** (`file_uri`) on the Digital Object being created | **In-form population**, persisted on the modal's "Create and Link" (A-11) |
-| **B — Batch "Upload and Link"** | A new panel on the **parent Archival Object** listing its immediate children, one file input each | One file per child AO, all in a single action | One **Digital Object** (with a File Version) linked to each child AO | **Server-side create + link** (the plugin creates a Digital Object and links it to each child AO) |
-| **C — "Upload Digital Objects"** | A new button in the **Instances** section of **one Archival Object**, beside "Add Digital Object" | **Multiple files** for the **current AO**, in one multi-select | One **Digital Object** per file (Title = filename without extension, Identifier = returned URI), each linked to the current AO | **In-form instance population**, persisted on the native **"Save Archival Object"** (A-18) |
+| **A — Single deposit** | A **child Archival Object** → Instances → Add Digital Object → **Create** modal | One file for one child AO, repeated manually down the tree | The Digital Object being created gets **Identifier = URI** + a **File Version** (`file_uri` = URI) | **In-form population**, persisted on the modal's "Create and Link" (A-11) |
+| **B — Batch "Upload and Link"** | A new panel on the **parent Archival Object** listing its immediate children, one file input each | One file per child AO, all in a single action | One **Digital Object** (Identifier = URI + a File Version) linked to each child AO | **Server-side create + link** (the plugin creates a Digital Object and links it to each child AO) |
+| **C — "Upload Digital Objects"** | A new button in the **Instances** section of **one Archival Object**, beside "Add Digital Object" | **Multiple files** for the **current AO**, in one multi-select | One **Digital Object** per file (Title = filename without extension, Identifier = URI + a File Version), each linked to the current AO | **In-form instance population**, persisted on the native **"Save Archival Object"** (A-18) |
 
-Mode A is the primary, lowest-risk flow. Mode B populates many *children* quickly. Mode C populates many *Digital Objects on one* Archival Object quickly. All three are `DepositBatch` = N × the same `DepositEntry` primitive (N = 1 for Mode A), differing only in write-back: Mode A and Mode C use **in-form population** persisted by a native Save; Mode B uses **server-side create + link** (see [Mode B write path](#mode-b-write-path-server-side-create--link)).
+Mode A is the primary, lowest-risk flow. Mode B populates many *children* quickly. Mode C populates many *Digital Objects on one* Archival Object quickly. All three are `DepositBatch` = N × the same `DepositEntry` primitive (N = 1 for Mode A), and all three write the URI to **both** the Digital Object Identifier and a File Version (A-19). They differ only in write-back mechanics: Mode A and Mode C use **in-form population** persisted by a native Save; Mode B uses **server-side create + link** (see [Mode B write path](#mode-b-write-path-server-side-create--link)).
 
 ### Mode A — single deposit (child Archival Object)
 
@@ -75,7 +77,7 @@ To populate many children in one pass, the plugin adds an **"Upload and Link"** 
 1. Staff user browses to the **parent** Archival Object; child Archival Objects appear in the resource tree (upper panel) **and** as rows in the new "Upload and Link" section.
 2. For each child they want to populate, the staff user selects a **local file** in that child's file input. (Children left blank are skipped.)
 3. Staff user clicks a single **"Upload and Link"** button for the whole group.
-4. For every child with a chosen file, the plugin **deposits the file via SWORD**, then **creates a Digital Object with a single File Version** (`file_uri` = returned public item URL) and **links it to that child Archival Object** as a digital-object instance.
+4. For every child with a chosen file, the plugin **deposits the file via SWORD**, then **creates a Digital Object** (Identifier = returned URI, plus a single File Version `file_uri` = same URI — A-19) and **links it to that child Archival Object** as a digital-object instance.
 5. A per-child result summary reports success/failure; failures are **fail-forward** (successful children are created and linked; failed children are listed for retry — parent G-07).
 
 Mode B still honors **1:1:1** (one file → one Digital Object with one File Version → one child AO) and **A-13** (children pre-exist). It does **not** attach multiple binaries to a single child, and it is **not** the deferred drag-and-drop wizard (see Out of scope).
@@ -91,10 +93,10 @@ Mode C resembles the original v0.1 multi-select idea, but each selected file bec
 3. Staff user clicks the **new "Upload Digital Objects"** button (next to "Add Digital Object").
 4. A **multi-select** file dialog opens.
 5. Staff user selects **one or more** files.
-6. The plugin **deposits each file via SWORD**, then prepares **one new Digital Object per returned URI**. Each Digital Object has its **Title** set to the **file name without extension** and its **Identifier** set to the **returned URI**. Each is added to the current Archival Object as a digital-object instance.
-7. Staff user clicks **"Save Archival Object"**, which persists the new Digital Objects and their instance links.
+6. The plugin **deposits each file via SWORD**, then prepares **one new Digital Object per returned URI**. Each Digital Object has its **Title** set to the **file name without extension**, its **Identifier** (`digital_object_id`, required) set to the **returned URI**, and a **File Version** whose `file_uri` is the same URI (so the PUI shows a clickable link — A-19). Each is added to the current Archival Object as a digital-object instance.
+7. Staff user clicks **"Save Archival Object"**, which persists the new Digital Objects (with their File Versions) and their instance links.
 
-Mode C preserves **one file → one repository item → one Digital Object** (still 1:1, just terminating at a Digital Object rather than a File Version). It **reintroduces multi-select** — but only in the sense of *many files → many Digital Objects on one AO*; attaching many File Versions to a single Digital Object remains out of scope. Because the target Archival Object is the record open in the editor, persistence rides its native **"Save Archival Object"** (like Mode A's in-form population, A-11/A-18).
+Mode C preserves **one file → one repository item → one Digital Object** (still 1:1). It **reintroduces multi-select** — but only in the sense of *many files → many Digital Objects on one AO*; attaching many File Versions to a single Digital Object remains out of scope (each Digital Object gets exactly one File Version, mirroring its Identifier). Because the target Archival Object is the record open in the editor, persistence rides its native **"Save Archival Object"** (like Mode A's in-form population, A-11/A-18).
 
 This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md), which defines *what*: roles, config table, BS01–BS03, ES01–ES04, gaps G-01–G-10) to implementation planning (*which plugin, controllers, JSONModels, and client library would change*).
 
@@ -104,7 +106,7 @@ This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`]
 2. **Mode A** — entry from the **child Archival Object → Instances → Add Digital Object → Create** modal (primary), plus the standalone **Digital Object** / **Digital Object Component** edit screens (same subrecord form)
 3. An **"Upload File Version"** control aligned with the existing **"Add File Version"** button, in every context where the File Versions subrecord form is rendered
 4. **Mode B** — an **"Upload and Link"** panel on the **parent Archival Object** listing immediate children with one file input each, and a single action that deposits + creates + links a Digital Object per child (server-side)
-5. **Mode C** — an **"Upload Digital Objects"** button in the Instances section of a single Archival Object that multi-selects files and creates one Digital Object per file (Title = filename, Identifier = returned URI), linked to that AO and saved with it
+5. **Mode C** — an **"Upload Digital Objects"** button in the Instances section of a single Archival Object that multi-selects files and creates one Digital Object per file (Title = filename, Identifier = returned URI, plus one File Version — A-19), linked to that AO and saved with it
 6. The `DepositEntry` contract (one file → one repository item); `DepositBatch` = N × `DepositEntry`, realized by Modes B and C (fail-forward, G-07)
 7. A version-abstracted SWORD client (v2 now; v3 adapter stub)
 8. Two write-back paths: **in-form population** (Modes A and C) and **server-side create + link** (Mode B)
@@ -133,7 +135,7 @@ This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`]
 |------------|--------------------------------|
 | G-02 | Whether AS stores binaries. **Resolved here:** it does not — AS is a CMS, not a DAMS; binaries come from the **staff user's browser** at deposit time. |
 | G-03 | Where the deposit initiates. **Resolved here:** primarily the **Archival Object → Instances → Add Digital Object → Create** modal, via an "Upload File Version" control in the **File Versions** subrecord section, aligned with "Add File Version". The same control appears wherever that subrecord form renders (standalone Digital Object / Component edit). |
-| G-06 | Item/file granularity. **Resolved here:** **1:1:1** — one file → one DSpace item → one AS File Version. |
+| G-06 | Item/file granularity. **Resolved here:** **1:1:1** — one file → one DSpace item → one Digital Object; the returned URI is written to **both** the Digital Object **Identifier** (`digital_object_id`, required) and a **File Version** `file_uri` (A-19). |
 | G-04 / G-05 | Package format and metadata mapping. **Partially open:** v0.1 uses **binary deposit**; descriptive-metadata mapping is a **placeholder** (M-01). |
 | G-08 | SWORD version abstraction. **Resolved here:** `SwordProtocolAdapter` interface, v2 impl + v3 stub. |
 | Client library | Not named. **Resolved here:** `sword2ruby` *or* a thin native client behind the adapter. |
@@ -157,7 +159,7 @@ This mirrors the `LinkEntry`/`LinkBatch` and `create_digital_object` patterns fr
 | A-03 | The target repository exposes a **Service Document URL** and ≥1 **Collection** accepting the configured deposit type (typically `application/pdf` / binary). |
 | A-04 | **ArchivesSpace does not persist deposited binaries.** Files are streamed from the browser through the plugin to the SWORD endpoint and held only transiently. Only the returned **item URL** (and optional edit IRI) are written to AS. |
 | A-05 | Deposit orchestration runs in the **staff frontend plugin**, which already holds an authenticated backend session, so binaries never transit the JSON backend API. |
-| A-06 | **Granularity is 1:1:1**: one uploaded file → one repository item → one `file_version` on the target Digital Object / Component (whether pre-existing or being created inline from a child Archival Object). |
+| A-06 | **Granularity is 1:1:1**: one uploaded file → one repository item → one Digital Object. The returned URI is recorded on that Digital Object in **both** its required **Identifier** (`digital_object_id`) and one **File Version** `file_uri` (A-19), whether the Digital Object is pre-existing or created inline. |
 | A-07 | The `file_uri` written to AS is the repository's **public item URL** (e.g. `{dspaceBaseUrl}/handle/{handle}`), because PUI end users and staff both click it. |
 | A-08 | **Authentication (v2)** is **HTTP Basic Auth** with a service credential configured per AS repository (parent G-01; per-user credentials deferred). |
 | A-09 | Deposit is **synchronous from the user's perspective** in v0.1. Even if the endpoint returns SWORD **In-Progress**, AS still writes the File Version immediately; staff manage visibility via existing **Publish?** and **Make Representative** controls. |
@@ -168,8 +170,9 @@ This mirrors the `LinkEntry`/`LinkBatch` and `create_digital_object` patterns fr
 | A-14 | **Mode B writes server-side.** Because Mode B spans **sibling** records (many child Archival Objects) rather than one open form, it cannot rely on the native "Create and Link" form save. The plugin creates each Digital Object and links it to its child Archival Object via the **JSONModel API** (`create_digital_object` + append a digital-object instance to the child AO; AS has no PATCH → GET→merge→POST). This is the same server-side path A-11 marks optional for Mode A. |
 | A-15 | **Mode B lists only the parent's immediate (direct) child Archival Objects** and maps exactly **one file to one child** (1:1:1 preserved). Recursive/deep descendants and many-files-per-child are out of scope. |
 | A-16 | **Children are enumerated via ArchivesSpace's existing tree/children API** (e.g. the resource/archival-object tree endpoints the SUI already uses); the plugin does not maintain its own hierarchy. |
-| A-17 | **Mode C creates one Digital Object per file, all linked to the current Archival Object.** Each deposited file yields a distinct Digital Object with **Title = file name without extension** and **Identifier (`digital_object_id`) = returned URI**; a digital-object instance for each is added to the AO being edited. Multi-select is supported here (unlike Modes A/B) because the fan-out is *files → Digital Objects*, still 1:1 per file. |
+| A-17 | **Mode C creates one Digital Object per file, all linked to the current Archival Object.** Each deposited file yields a distinct Digital Object with **Title = file name without extension**, **Identifier (`digital_object_id`) = returned URI**, and **one File Version** (`file_uri` = returned URI, A-19); a digital-object instance for each is added to the AO being edited. Multi-select is supported here (unlike Modes A/B) because the fan-out is *files → Digital Objects*, still 1:1 per file. |
 | A-18 | **Mode C persists on the native "Save Archival Object."** Like Mode A (A-11), the plugin populates the open AO edit form (its Instances subrecords) client-side; ArchivesSpace creates the new Digital Objects and their instance links when the staff user saves the Archival Object. No plugin-side server write is required on the default path (contrast Mode B, A-14). *Whether the AO form serializes multiple nested new Digital Objects on a single save should be verified against the sandbox before build (see D-13).* |
+| A-19 | **The returned URI is written to two Digital Object fields, in every mode.** (1) **Identifier** (`digital_object_id`) — a **required** field on Digital Objects (so it must be set at create time regardless), holding the canonical/original deposit URI; and (2) a **File Version** `file_uri` (public item URL, A-07) — because the ArchivesSpace PUI renders a clickable "view online" link only from a File Version, not from the Identifier (sandbox-verified 2026-07-20). File Versions therefore remain available for the *future* re-deposit / new-upload scenario (G-10), while the initial deposit populates both fields. |
 
 ---
 
@@ -241,7 +244,7 @@ Assume staff host `https://as.example.edu` (SUI):
 | **New plugin** `plugins/sword_deposit/` | Primary — controllers, service, SWORD adapter, config, JS, views, locales | **Major (new)** |
 | Staff UI subrecord form for `file_version` | **Mode A:** add "Upload File Version" control beside "Add File Version"; render resulting File Versions | **Moderate (via plugin override/partial)** |
 | Staff UI **Archival Object edit** (Instances area) | **Mode B:** inject the "Upload and Link" panel listing immediate children. **Mode C:** inject the "Upload Digital Objects" button beside "Add Digital Object" | **Moderate (via plugin partial/hook)** |
-| `digital_object` JSONModel | **Mode A:** append `file_versions[]` (data only). **Mode B:** `create_digital_object` with one `file_version` (server-side). **Mode C:** one new Digital Object per file (Title, Identifier) created via the AO form's nested instances on save | **None (data only)** |
+| `digital_object` JSONModel | All modes write **Identifier (`digital_object_id`, required) + one `file_version`** (A-19). **Mode A:** in-form on the DO being created. **Mode B:** `create_digital_object` server-side. **Mode C:** one new DO per file via the AO form's nested instances on save | **None (data only)** |
 | `archival_object` JSONModel | **Mode B:** append a digital-object `instances[]` entry linking the new Digital Object to the child AO (server-side). **Mode C:** append **N** digital-object `instances[]` entries to the current AO, persisted on Save | **None (data only)** |
 | Resource/AO **tree API** | **Mode B:** enumerate the parent's immediate children (A-16) | **None (read only)** |
 | Repository configuration UI | Host SWORD Deposit Settings section | **Minor (plugin-provided)** |
@@ -288,7 +291,7 @@ ArchivesSpace has **no SWORD code today**. Closest reusable machinery:
 | Component | Reuse |
 |-----------|-------|
 | Resource / Archival Object **tree API** | List the parent's immediate children (title + ref) to render the "Upload and Link" rows (A-16). |
-| `create_digital_object` (A1-2 precedent) | For each child with a file: `POST /repositories/:id/digital_objects` with a single `file_version` whose `file_uri` is the SWORD item URL. |
+| `create_digital_object` (A1-2 precedent) | For each child with a file: `POST /repositories/:id/digital_objects` with **Identifier (`digital_object_id`) = the SWORD item URL** (required) and a single `file_version` whose `file_uri` is the same URL (A-19). |
 | Digital-object **instance** on `archival_object` | `GET` the child AO → append `instances[]` a digital-object instance referencing the new DO → `POST` (full JSONModel; GET→merge→POST). Mirrors A1-2 `create_digital_object` linking. |
 | Frontend authenticated backend session | Same session/token reused for all reads and writes. |
 
@@ -299,7 +302,7 @@ ArchivesSpace has **no SWORD code today**. Closest reusable machinery:
 | Archival Object **Instances** subrecord + "Add Digital Object" | The new "Upload Digital Objects" button sits beside it. Each deposited file adds one **digital-object instance** row (like the native "Create Digital Object" flow, but repeated per file and pre-filled). |
 | `add_form_and_link` / nested subrecord persistence | Same mechanism Mode A relies on: AS creates the nested new Digital Object(s) and links them when the AO is saved — extended from one to **N** instances (A-18; verify multi-nesting, D-13). |
 | Native **"Save Archival Object"** submit | Default write path (A-18). Populated in-form, persisted by AS's own save — no plugin-side server write on the default path. |
-| Digital Object `title` / `digital_object_id` | Set per file: **Title = filename without extension**, **Identifier = returned URI** (A-17). See M-01 / D-14 for the URI-vs-File-Version consideration. |
+| Digital Object `title` / `digital_object_id` / `file_versions[]` | Set per file: **Title = filename without extension**, **Identifier = returned URI** (required), **plus one File Version** (`file_uri` = returned URI) for PUI clickability (A-19). |
 
 ### Configuration
 
@@ -421,24 +424,29 @@ class SwordV2ClientAdapter          # implements SwordProtocolAdapter
 end
 ```
 
-### File Version population (client-side, default path)
+### File Version + Identifier population (client-side, default path)
 
-On a successful deposit the browser receives `{ filename, file_uri }` and
-**injects a populated File Version row** into the current subrecord form — the same DOM the
-native "Add File Version" button drives — then AS persists it on Save / "Create and Link"
-(A-11). No plugin-side JSONModel write is needed, so this works identically in the unsaved
-child Archival Object → Create Digital Object modal and on a saved Digital Object edit screen.
+On a successful deposit the browser receives `{ filename, file_uri }` and populates the current
+Digital Object form with **both** targets (A-19): it sets the Digital Object **Identifier**
+(`digital_object_id`, a required field — the canonical URI) **and injects a populated File
+Version row** (the same DOM the native "Add File Version" button drives). AS persists both on
+Save / "Create and Link" (A-11). No plugin-side JSONModel write is needed, so this works
+identically in the unsaved child Archival Object → Create Digital Object modal and on a saved
+Digital Object edit screen.
 
 ```javascript
 // sword_deposit.js (sketch): after POST /plugins/sword_deposit/deposit (one file)
 function onDepositResult(r) {
   if (r.status !== "ok") { showRowError(r.filename, r.error); return; } // ES02/03/04
+  setDigitalObjectIdentifier(r.file_uri);  // required field; canonical URI (A-19)
   var $row = addFileVersionRow();          // reuse AS subrecord add
-  $row.find("[name$='[file_uri]']").val(r.file_uri);   // public handle URL (A-07)
+  $row.find("[name$='[file_uri]']").val(r.file_uri);   // public handle URL -> PUI link (A-07)
   $row.find("[name$='[publish]']").prop("checked", true); // A-09; staff can toggle
   // is_representative left unchecked -> staff uses "Make Representative"
 }
 // persistence happens on the native "Create and Link" / Save submit
+// Note: on a Digital Object Component (DOC), the Identifier lives on the parent DO,
+// so only the File Version is populated there; the Identifier is set when the DO is the target.
 ```
 
 **Optional immediate-save path (pre-existing Digital Object only, see D-03):** if a future
@@ -501,9 +509,9 @@ def create_and_link(child_ao_ref:, file_uri:)
   child = JSONModel(:archival_object).find(id_from(child_ao_ref))
   do_obj = JSONModel(:digital_object).new._always_valid!
   do_obj.title = child.display_string                 # minimal title (M-01); refine later
-  do_obj.digital_object_id = generate_identifier(child)
+  do_obj.digital_object_id = file_uri                 # required field; canonical URI (A-19)
   do_obj.file_versions = [{
-    "jsonmodel_type" => "file_version", "file_uri" => file_uri,          # A-07
+    "jsonmodel_type" => "file_version", "file_uri" => file_uri,          # A-07; PUI clickable link (A-19)
     "publish" => true, "is_representative" => false,                     # A-09
     "xlink_actuate_attribute" => "onRequest", "xlink_show_attribute" => "new"
   }]
@@ -534,7 +542,7 @@ def deposit_digital_objects
   report = SwordDepositService.new(cfg, current_backend_session)
              .deposit_digital_objects_batch(params[:files], ao_ref: params[:ao_ref],
                                              collection_href: params[:collection_href])
-  render json: report   # per-file { filename, title, identifier(file_uri), status, error }
+  render json: report   # per-file { filename, title, identifier(=file_uri), file_uri, status, error }
 end
 ```
 
@@ -546,8 +554,8 @@ def deposit_digital_objects_batch(files, ao_ref:, collection_href:)
     begin
       ctx  = DepositContext.new(parent_ao_ref: ao_ref)                    # audit/context only
       res  = deposit_entry(f, ctx, collection_href: collection_href)      # SWORD deposit (shared primitive)
-      DigitalObjectInstanceBuilder.descriptor(                            # -> { title:, identifier:, ... }
-        filename: f.original_filename, file_uri: res.file_uri)            # Title=basename, Identifier=URI (A-17)
+      DigitalObjectInstanceBuilder.descriptor(                            # -> { title:, identifier:, file_uri: }
+        filename: f.original_filename, file_uri: res.file_uri)            # Title=basename; URI -> Identifier + File Version (A-19)
     rescue => e
       DepositResult.fail(f.original_filename, e)   # fail-forward; other files continue (G-07)
     end
@@ -555,18 +563,19 @@ def deposit_digital_objects_batch(files, ao_ref:, collection_href:)
 end
 ```
 
-**`DigitalObjectInstanceBuilder.descriptor`** — filename→Title, URI→Identifier (A-17):
+**`DigitalObjectInstanceBuilder.descriptor`** — filename→Title, URI→both Identifier and File Version (A-19):
 
 ```ruby
 def self.descriptor(filename:, file_uri:)
   { "status"     => "ok",
     "filename"   => filename,
     "title"      => File.basename(filename, ".*"),   # file name without extension
-    "identifier" => file_uri }                        # returned URI -> digital_object_id (A-07/A-17; see D-14)
+    "identifier" => file_uri,                         # -> digital_object_id (required, canonical URI)
+    "file_uri"   => file_uri }                        # -> a File Version (PUI clickable link) (A-07/A-19)
 end
 ```
 
-**Mode C in-form population (client-side):** for each successful descriptor, the browser adds a **digital-object instance** to the AO's Instances subrecord — creating a nested new Digital Object with `title` and `digital_object_id` pre-filled — exactly as if the staff user had used "Add Digital Object → Create" once per file. AS persists all of them on **"Save Archival Object"** (A-18).
+**Mode C in-form population (client-side):** for each successful descriptor, the browser adds a **digital-object instance** to the AO's Instances subrecord — creating a nested new Digital Object with `title`, `digital_object_id`, **and one File Version** pre-filled — exactly as if the staff user had used "Add Digital Object → Create" once per file. AS persists all of them on **"Save Archival Object"** (A-18).
 
 ```javascript
 // sword_upload_digital_objects.js (sketch): after POST .../deposit_digital_objects (many files)
@@ -575,7 +584,10 @@ function onDepositResults(report) {
     if (r.status !== "ok") { showFileError(r.filename, r.error); return; } // ES02/03/04
     var $inst = addDigitalObjectInstance();                 // reuse AS "Add Digital Object" (nested create)
     $inst.find("[name$='[digital_object][title]']").val(r.title);            // filename w/o extension
-    $inst.find("[name$='[digital_object][digital_object_id]']").val(r.identifier); // returned URI (A-17)
+    $inst.find("[name$='[digital_object][digital_object_id]']").val(r.identifier); // required, canonical URI
+    var $fv = addFileVersionRow($inst);                     // one File Version on the nested DO (A-19)
+    $fv.find("[name$='[file_uri]']").val(r.file_uri);       // public URL -> PUI clickable link (A-07)
+    $fv.find("[name$='[publish]']").prop("checked", true);  // A-09; staff can toggle
   });
   // persistence happens on the native "Save Archival Object" submit (A-18)
 }
@@ -633,8 +645,8 @@ The control lives **in the File Versions subrecord section**, aligned with **Add
 | **"Upload File Version"** button | Rendered next to "Add File Version" when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
 | Hidden file input | `<input type="file" accept=".pdf">` — **single file** (A-13; no `multiple`). |
 | Collection select | Shown only if >1 collection or no default; else uses `default_collection_href`; "None" allowed (parent BS02). |
-| Progress + result | Upload progress; on success, **populate the File Version row** (with `file_uri`, `publish` checked) exactly as if the user had added it manually; on failure, inline error (ES02/ES03/ES04). |
-| Save semantics | The deposited File Version is populated into the in-memory subrecord form and persisted on the record's normal **Save** / **"Create and Link"** (A-11). No auto-save is required; see D-03. |
+| Progress + result | Upload progress; on success, **set the Digital Object Identifier** (required, canonical URI) and **populate a File Version row** (`file_uri`, `publish` checked) exactly as if added manually (A-19); on failure, inline error (ES02/ES03/ES04). |
+| Save semantics | The Identifier and the deposited File Version are populated into the in-memory form and persisted on the record's normal **Save** / **"Create and Link"** (A-11). No auto-save is required; see D-03. |
 
 ### Mode B — "Upload and Link" panel (parent Archival Object)
 
@@ -655,14 +667,14 @@ A plugin-injected panel on the parent Archival Object (proposed placement: a new
 
 A plugin-injected button in the **Instances** section of an Archival Object, beside **"Add Digital Object."** It opens a **multi-select** file dialog; each chosen file becomes its own Digital Object linked to the current AO.
 
-**Flow:** open an Archival Object → scroll to **Instances** → click **"Upload Digital Objects"** → multi-select one or more files → the plugin deposits each via SWORD → for each, a **digital-object instance** appears in Instances with **Title = filename (no extension)** and **Identifier = returned URI** → click **"Save Archival Object"** to persist all of them.
+**Flow:** open an Archival Object → scroll to **Instances** → click **"Upload Digital Objects"** → multi-select one or more files → the plugin deposits each via SWORD → for each, a **digital-object instance** appears in Instances with **Title = filename (no extension)**, **Identifier = returned URI**, and **one File Version** (`file_uri` = returned URI) → click **"Save Archival Object"** to persist all of them.
 
 | Element | Behavior |
 |---------|----------|
 | **"Upload Digital Objects"** button | Rendered next to "Add Digital Object" in the AO Instances section when SWORD is enabled (ES01 hides/disables otherwise, with tooltip). |
 | File input | `<input type="file" accept=".pdf" multiple>` — **multi-select** (A-17). |
 | Collection select | One selector for the whole selection; default from config (D-06). |
-| Progress + result | Per-file progress; on success, **add a digital-object instance** to the AO form (Title + Identifier pre-filled); on failure, inline per-file error (ES02/ES03/ES04) with the other files unaffected. |
+| Progress + result | Per-file progress; on success, **add a digital-object instance** to the AO form (Title, Identifier, and one File Version pre-filled — A-19); on failure, inline per-file error (ES02/ES03/ES04) with the other files unaffected. |
 | Persistence | The new Digital Objects are populated **in-form** and persisted on the native **"Save Archival Object"** (A-18). Multi-nested create should be verified (D-13); server-side pre-create is the fallback. |
 
 **i18n:** add keys under `frontend/locales/en.yml` following AS locale conventions.
@@ -681,13 +693,15 @@ A plugin-injected button in the **Instances** section of an Archival Object, bes
 
 ### AS record fields written per mode
 
-| Mode | AS record | Title source | Where the returned URI lands |
-|------|-----------|--------------|------------------------------|
-| A | File Version on a Digital Object | in-form Title / parent AO (A-12) | `file_version.file_uri` (A-07) |
-| B | New Digital Object per child, + File Version | child AO `display_string` (M-01) | `file_version.file_uri` (A-07) |
-| C | New Digital Object per file | **filename without extension** (A-17) | `digital_object.digital_object_id` (Identifier) (A-17) — see D-14 |
+Every mode writes the returned URI to **both** Digital Object fields (A-19): the required **Identifier** (canonical URI) and a **File Version** `file_uri` (clickable PUI link).
 
-> **D-14 note:** Mode C stores the URI in the Digital Object **Identifier** (`digital_object_id`) per the client ask. Because the PUI renders clickable links from `file_versions[].file_uri` (A-07), not from `digital_object_id`, Mode C Digital Objects would not surface a public link unless a File Version is also added. Recommendation: also populate a **File Version with `file_uri` = the same URI** so the public link renders — pending confirmation with the AS/DSpace teams (D-14).
+| Mode | AS record | Title source | Identifier (`digital_object_id`) | File Version (`file_uri`) |
+|------|-----------|--------------|----------------------------------|---------------------------|
+| A | Digital Object created in the modal | in-form Title / parent AO (A-12) | returned URI (required) | returned URI (A-07) |
+| B | New Digital Object per child | child AO `display_string` (M-01) | returned URI (required) | returned URI (A-07) |
+| C | New Digital Object per file | **filename without extension** (A-17) | returned URI (required) | returned URI (A-07) |
+
+> **D-14 (resolved 2026-07-20):** write **both**. The Digital Object **Identifier** (`digital_object_id`) is a **required** field and holds the canonical/original URI; a **File Version** `file_uri` carries the same URI so the PUI renders a clickable "view online" link (sandbox-verified: Identifier-only shows plain text; a File Version shows a clickable button). This also keeps File Versions available for the future re-deposit / new-upload scenario (G-10). *For a Digital Object Component (Mode A on a DOC), the Identifier lives on the parent Digital Object, so only the File Version is written on the component itself.*
 
 ### Packaging modes behind the adapter (future-proofing)
 
@@ -710,7 +724,7 @@ A plugin-injected button in the **Instances** section of an Archival Object, bes
 
 Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disposition**, optional **Slug**, **In-Progress**, **Packaging**.
 
-**Which IRIs to keep:** the receipt yields several IRIs. Store the **public item URL** as `file_uri` (A-07); optionally retain the **Edit-IRI** in the audit log to enable future re-deposit/update (G-10).
+**Which IRIs to keep:** the receipt yields several IRIs. Store the **public item URL** in **both** the Digital Object **Identifier** (`digital_object_id`, required) and a **File Version** `file_uri` (A-07/A-19); optionally retain the **Edit-IRI** in the audit log to enable future re-deposit/update (G-10).
 
 ### Client library note (`sword2ruby`)
 
@@ -746,14 +760,14 @@ sequenceDiagram
   DS-->>A: 201 DepositReceipt (+ item URL, edit IRI)
   Svc-->>C: DepositResult(ok, file_uri = public handle URL)
   C-->>UI: result { filename, file_uri }
-  UI-->>UI: populate File Version row (file_uri, Publish checked)
+  UI-->>UI: set Digital Object Identifier + populate File Version row (file_uri, Publish checked)
   S->>UI: Click Create and Link
-  UI->>B: POST digital_object (+ file_version) + link instance to Archival Object
-  B-->>UI: Created + Linked (PUI shows file_uri)
+  UI->>B: POST digital_object (Identifier + file_version) + link instance to Archival Object
+  B-->>UI: Created + Linked (PUI shows file_uri link)
   Note over S,B: Staff clicks next child Archival Object and repeats
 ```
 
-> Mode A performs **no AS write** during the deposit; it returns the `file_uri` for in-form population (A-11). AS persistence — creating the Digital Object, its File Version, and the instance link back to the child Archival Object — happens on the native **"Create and Link"** submit. On a standalone Digital Object edit screen the flow is identical except the final submit is **Save** on the existing record. The staff user then selects the next child in the tree and repeats (A-13).
+> Mode A performs **no AS write** during the deposit; it returns the `file_uri` for in-form population (A-11). AS persistence — creating the Digital Object (with its required Identifier and a File Version, A-19) and the instance link back to the child Archival Object — happens on the native **"Create and Link"** submit. On a standalone Digital Object edit screen the flow is identical except the final submit is **Save** on the existing record. The staff user then selects the next child in the tree and repeats (A-13).
 
 ## Data flow: Mode B (batch "Upload and Link")
 
@@ -774,7 +788,7 @@ sequenceDiagram
     Svc->>A: deposit(collection, binary + minimal metadata)
     A->>DS: SWORD POST (Basic auth)
     DS-->>A: 201 DepositReceipt (+ item URL, edit IRI)
-    Svc->>B: POST digital_object (file_version.file_uri = item URL)
+    Svc->>B: POST digital_object (Identifier = item URL + file_version.file_uri = item URL)
     Svc->>B: GET child AO → append digital-object instance → POST
     B-->>Svc: Digital Object created + linked
   end
@@ -803,16 +817,16 @@ sequenceDiagram
     Svc->>A: deposit(collection, binary + minimal metadata)
     A->>DS: SWORD POST (Basic auth)
     DS-->>A: 201 DepositReceipt (+ item URL, edit IRI)
-    Svc-->>C: descriptor { title = filename, identifier = item URL }
+    Svc-->>C: descriptor { title = filename, identifier = item URL, file_uri = item URL }
   end
-  C-->>UI: per-file report [{ filename, title, identifier, status }]
-  UI-->>UI: add one digital-object instance per file (Title, Identifier pre-filled)
+  C-->>UI: per-file report [{ filename, title, identifier, file_uri, status }]
+  UI-->>UI: add one digital-object instance per file (Title, Identifier, one File Version pre-filled)
   S->>UI: Click Save Archival Object
-  UI->>B: POST archival_object with N nested new digital_objects + instances
+  UI->>B: POST archival_object with N nested new digital_objects (Identifier + File Version) + instances
   B-->>UI: Archival Object saved, Digital Objects created and linked
 ```
 
-> Mode C **deposits many files** but writes like Mode A: it returns one descriptor per file and the browser adds a digital-object instance to the open AO form (Title = filename, Identifier = URI, A-17). AS creates the new Digital Objects and links them on **"Save Archival Object"** (A-18). Multi-nested create is the item to verify (D-13); if unsupported, fall back to server-side pre-create per file (ES05 orphan caveat applies).
+> Mode C **deposits many files** but writes like Mode A: it returns one descriptor per file and the browser adds a digital-object instance to the open AO form (Title = filename, Identifier = URI, and one File Version `file_uri` = URI — A-19). AS creates the new Digital Objects and links them on **"Save Archival Object"** (A-18). Multi-nested create is the item to verify (D-13); if unsupported, fall back to server-side pre-create per file (ES05 orphan caveat applies).
 
 ---
 
@@ -847,7 +861,7 @@ sequenceDiagram
 | D-11 | **Mode B child scope** | Immediate children only vs recursive/deep | **Immediate (direct) children only** in v0.4 (A-15); deep selection deferred to the wizard |
 | D-12 | **Mode B transactionality** | Fail-forward per child vs all-or-nothing vs rollback of orphaned items | **Fail-forward per child** (G-07); log Edit-IRI of orphaned items (ES05); auto-rollback deferred |
 | D-13 | **Mode C multi-nested create on one save** | In-form nested create of N Digital Objects on "Save Archival Object" vs server-side pre-create per file | **In-form nested create** (A-18) — orphan-free and consistent with Mode A; **verify in the sandbox** that the AO form serializes multiple nested new Digital Objects, else fall back to server-side pre-create |
-| D-14 | **Mode C — where the URI lands** | Digital Object **Identifier** only (client ask) vs Identifier **+ a File Version `file_uri`** | **Also add a File Version `file_uri`** (A-07) so the PUI renders a clickable public link; keep Identifier = URI per the client ask — confirm with AS/DSpace teams |
+| D-14 | **Where the returned URI lands (all modes)** | Identifier only vs File Version only vs **both** | **Both (resolved 2026-07-20):** Identifier (`digital_object_id`, *required*) = canonical URI **and** a File Version `file_uri` = same URI for the PUI clickable link (sandbox-verified). Applies to Modes A, B, and C (A-19) |
 | D-15 | **Mode C button placement/label** | "Upload Digital Objects" beside "Add Digital Object" vs elsewhere in Instances | **Beside "Add Digital Object"** in the Instances section (matches the client ask); confirm label/UX |
 
 ---
@@ -859,9 +873,9 @@ sequenceDiagram
 | **0 — Spike** | Native v2 binary deposit against a test DSpace SWORD endpoint; parse receipt → item URL | `lib/sword` |
 | **1 — Config** | Per-repository SWORD settings + Test connection + enable flag | frontend/backend config |
 | **2 — Upload UI (Mode A)** | "Upload File Version" control (single file), progress, in-form row population; injected into the File Versions subrecord in the child AO "Create Digital Object" modal **and** the DO/DOC edit screens | frontend assets/views |
-| **3 — Deposit + in-form population (Mode A)** | `DepositEntry` (single file), metadata from context (form + parent AO), return `file_uri`; persistence via native Save / "Create and Link" | `lib` |
-| **4 — Batch Upload-and-Link (Mode B)** | "Upload and Link" panel listing immediate children (tree API); `deposit_and_link_batch` + `DigitalObjectLinker` (create DO + instance link per child); per-child report; fail-forward | frontend + `lib` |
-| **5 — Multi-DO Upload (Mode C)** | "Upload Digital Objects" button (multi-select) in AO Instances; `deposit_digital_objects_batch` + `DigitalObjectInstanceBuilder` (Title = filename, Identifier = URI); in-form instance population; verify multi-nested create (D-13) | frontend + `lib` |
+| **3 — Deposit + in-form population (Mode A)** | `DepositEntry` (single file), metadata from context (form + parent AO), return `file_uri`; populate **Identifier + File Version** (A-19); persistence via native Save / "Create and Link" | `lib` |
+| **4 — Batch Upload-and-Link (Mode B)** | "Upload and Link" panel listing immediate children (tree API); `deposit_and_link_batch` + `DigitalObjectLinker` (create DO with Identifier + File Version, link per child); per-child report; fail-forward | frontend + `lib` |
+| **5 — Multi-DO Upload (Mode C)** | "Upload Digital Objects" button (multi-select) in AO Instances; `deposit_digital_objects_batch` + `DigitalObjectInstanceBuilder` (Title = filename, Identifier = URI, one File Version); in-form instance population; verify multi-nested create (D-13) | frontend + `lib` |
 | **6 — Hardening** | ES01–ES05, partial-batch fail-forward, orphaned-item logging, audit log, credential encryption | plugin-wide |
 | **7 — Metadata (M-01)** | Resolve AS→DC mapping; packaged deposit if required; Mode C File-Version-vs-Identifier (D-14) | `lib/metadata` |
 | **8 — Wizard (deferred)** | Deep/drag-drop file→archival-object mapping over the same `DepositBatch` + create-and-link machinery | frontend |
@@ -890,3 +904,4 @@ sequenceDiagram
 | 0.3-draft | 2026-07-19 | Simplified to match user studies: **one binary per child Archival Object**, repeated across the tree. **Dropped multi-select**; single-file upload only (`DepositEntry`; `DepositBatch` retained solely for the deferred wizard). Button label singular ("Upload File Version"). Added the observed step-by-step workflow and A-13 (AOs always pre-exist; per-child iteration is native tree navigation). Updated purpose/scope, in/out-of-scope, design stance, actors, controller/service and JS sketches, UI touchpoints, and data-flow diagram. |
 | 0.4-draft | 2026-07-19 | Added **Mode B — "Upload and Link"**: a parent-Archival-Object panel listing immediate children with one file input each, and a single action that deposits + creates + links a Digital Object per child. Framed the design as **two modes** sharing the `DepositEntry` primitive: Mode A (in-form population, unchanged) and Mode B (**server-side create + link**, realizing `DepositBatch`). Added A-14/A-15/A-16 (server-side write, immediate children, tree-API enumeration), `UploadAndLinkController` / `deposit_and_link_batch` / `DigitalObjectLinker` / `ArchivalObjectChildren` components, Mode B UI section, a second data-flow diagram, ES05 (orphaned item), and D-09–D-12. Distinguished Mode B from the still-deferred deep/drag-drop wizard. |
 | 0.5-draft | 2026-07-20 | Added **Mode C — "Upload Digital Objects"**: a button in the Instances section of a single Archival Object that **multi-selects** files and creates **one Digital Object per file** (Title = filename without extension, Identifier = returned URI), all linked to that AO and persisted on the native **"Save Archival Object."** Reframed the doc around **three modes** sharing the `DepositEntry` primitive; clarified that Mode C reintroduces multi-select as *files → Digital Objects* (not File Versions on one DO). Added A-17/A-18, `UploadDigitalObjectsController` / `deposit_digital_objects_batch` / `DigitalObjectInstanceBuilder` components + JS sketch, a per-mode field-mapping table, a third data-flow diagram, and D-13–D-15 (multi-nested-create verification, URI-vs-File-Version, button placement). Renumbered epics (added Mode C as Epic 5). |
+| 0.6-draft | 2026-07-20 | **Resolved D-14 → write both fields, all modes.** The returned URI is now recorded on every deposited Digital Object in **both** its required **Identifier** (`digital_object_id`, canonical URI) **and** a **File Version** `file_uri` (clickable PUI link). Confirmed by sandbox test (Identifier-only renders as plain text; a File Version renders a clickable button) and by learning that Identifier is a **required** field. Added **Mode C's File Version** (builder/JS/UI/data-flow), and **added the Identifier write to Modes A and B** (in-form population, `DigitalObjectLinker`, data-flow diagrams). Added A-19, updated A-06/G-06, the per-mode field-mapping table, "Which IRIs to keep," areas-touched, and epics. Noted the Digital Object Component nuance (Identifier lives on the parent DO). |
