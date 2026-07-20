@@ -609,7 +609,7 @@ sequenceDiagram
   participant DS as SWORD endpoint
   participant B as AS JSON backend
 
-  S->>UI: Click child Archival Object → Instances → Add Digital Object → Create; Upload File Version, select one file
+  S->>UI: Click child Archival Object → Instances → Add Digital Object → Create, then Upload File Version and select one file
   UI->>C: POST /plugins/sword_deposit/deposit (file, metadata, parent_ao_ref)
   C->>Svc: deposit_entry(file, ctx)
   Svc->>A: deposit(collection, binary + minimal metadata)
@@ -618,7 +618,7 @@ sequenceDiagram
   Svc-->>C: DepositResult(ok, file_uri = public handle URL)
   C-->>UI: result { filename, file_uri }
   UI-->>UI: populate File Version row (file_uri, Publish checked)
-  S->>UI: Click "Create and Link"
+  S->>UI: Click Create and Link
   UI->>B: POST digital_object (+ file_version) + link instance to Archival Object
   B-->>UI: Created + Linked (PUI shows file_uri)
   Note over S,B: Staff clicks next child Archival Object and repeats
@@ -638,7 +638,7 @@ sequenceDiagram
   participant DS as SWORD endpoint
   participant B as AS JSON backend
 
-  S->>UI: Open parent AO; pick one file per child; click "Upload and Link"
+  S->>UI: Open parent AO, pick one file per child, click Upload and Link
   UI->>C: POST /plugins/sword_deposit/deposit_and_link (children[{child_ao_ref, file}])
   loop each child with a file (fail-forward, G-07)
     C->>Svc: deposit_entry(file, ctx=child_ao) then create_and_link
@@ -650,7 +650,7 @@ sequenceDiagram
     B-->>Svc: Digital Object created + linked
   end
   C-->>UI: per-child report { child_ao_ref, status, digital_object_uri, file_uri, error }
-  UI-->>S: summary; success rows link to DO + repository item; failed rows offer retry
+  UI-->>S: summary — success rows link to DO + repository item, failed rows offer retry
 ```
 
 > Mode B **writes to AS server-side** (A-14): for each child with a file it deposits, then creates a Digital Object and links it to that child. There is no parent-form save step — results are persisted as the summary renders. Failures are isolated per child (fail-forward); a deposit that succeeds while the AS write fails leaves a repository item whose Edit-IRI is logged for cleanup (D-12).
