@@ -11,7 +11,7 @@ related:
   - specs/V1-dev-high-vivo-sword-deposit.md
   - specs/A1-2-dev-high-bidirectional-linking-as-ds.md
 last_synced: 2026-07-20
-version: 0.7-draft
+version: 0.8-draft
 ---
 
 # A3-4: ArchivesSpace SWORD Deposits — High-Level Feature Design
@@ -20,7 +20,7 @@ version: 0.7-draft
 
 **Scenarios:** [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) and [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52)
 
-**Status:** Draft v0.7 — high-level feature design; closes the *where-in-the-codebase* and *where-does-it-initiate* gaps in [`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md) (notably Gap G-03). Defines **three deposit modes** sharing one SWORD primitive: **Mode A** — single deposit (in-form population; verified against the ArchivesSpace sandbox, 2026-07-19); **Mode B** — a **"Upload and Link"** panel that deposits one local file per immediate child and creates+links a Digital Object for each (server-side); **Mode C** — an **"Upload Digital Objects"** button that multi-selects files and creates one Digital Object per file. **All three start from either a Resource or an Archival Object** (v0.7): both expose the same Instances group and tree, so the starting record can be a Resource root or any AO (A-20). **All modes write the returned URI to both fields** (v0.6): the Digital Object **Identifier** (`digital_object_id`, a *required* field — the canonical/original URI) **and** a **File Version** `file_uri` (so the PUI renders a clickable link; sandbox-verified 2026-07-20).
+**Status:** Draft v0.8 — high-level feature design; closes the *where-in-the-codebase* and *where-does-it-initiate* gaps in [`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md) (notably Gap G-03). Defines **three deposit modes** sharing one SWORD primitive: **Mode A** — single deposit (in-form population; verified against the ArchivesSpace sandbox, 2026-07-19); **Mode B** — a **"Upload and Link"** panel that deposits one local file per immediate child and creates+links a Digital Object for each (server-side); **Mode C** — an **"Upload Digital Objects"** button that multi-selects files and creates one Digital Object per file. **The feature is available only on Resource and Archival Object edit views** (v0.8): both expose the same Instances group and tree (A-20). It is **not** shown on standalone Digital Object edit screens, and **Digital Object Components are out of scope** (A-21 / D-17). **All modes write the returned URI to both fields** (v0.6): the Digital Object **Identifier** (`digital_object_id`, a *required* field — the canonical/original URI) **and** a **File Version** `file_uri` (so the PUI renders a clickable link; sandbox-verified 2026-07-20).
 
 **Systems:** ArchivesSpace staff UI (SUI, Rails) and JSON backend API; ArchivesSpace PUI (display only); DSpace SWORD v2 endpoint (7.x/9.x contract); extensible to other SWORD-compliant repositories and SWORD v3.
 
@@ -41,7 +41,7 @@ version: 0.7-draft
 
 Define **how ArchivesSpace would implement** a workflow in which a staff user deposits local files to a configured SWORD v2 repository and records the returned **public item URL(s)** on ArchivesSpace records. All three modes below share the same SWORD deposit primitive (`DepositEntry`) and the same per-file granularity — one file → one repository item → one Digital Object — differing only in **which record the Digital Object links to** and **how it is persisted**.
 
-**Starting point — a Resource or an Archival Object (A-20):** all three modes initiate from the **staff edit view of a Resource *or* an Archival Object**. Both record types expose the same **Instances** group (including "Add Digital Object → Create") and both sit on the same resource **tree**, so the modes work identically regardless of which one the staff user is editing. The term **host record** below means "the Resource or Archival Object currently being edited." The only type-dependent detail is Mode B's notion of *immediate children*: for a **Resource** those are its **top-level Archival Objects**; for an **Archival Object** those are its **child Archival Objects**.
+**Starting point — a Resource or an Archival Object (A-20):** all three modes initiate from the **staff edit view of a Resource *or* an Archival Object**. Both record types expose the same **Instances** group (including "Add Digital Object → Create") and both sit on the same resource **tree**, so the modes work identically regardless of which one the staff user is editing. **Sandbox-confirmed 2026-07-20:** a Resource has the same Instances options as an AO, and a Resource in the top tree shows its AO children. The term **host record** below means "the Resource or Archival Object currently being edited." The only type-dependent detail is Mode B's notion of *immediate children*: for a **Resource** those are its **top-level Archival Objects**; for an **Archival Object** those are its **child Archival Objects**. The feature is **not** available on standalone Digital Object edit views, and **Digital Object Components are out of scope** (A-21 / D-17).
 
 **Where the returned URI is written (all modes, v0.6):** each deposited file yields a Digital Object whose **Identifier** (`digital_object_id`) is set to the returned URI — this is a *required* field and holds the canonical/original location — **and** which carries a **File Version** whose `file_uri` is the same URI, so the ArchivesSpace PUI renders a clickable "view online" link (sandbox-verified 2026-07-20: an Identifier-only Digital Object shows the URI as plain text, whereas a File Version renders a clickable button). See A-19 and D-14.
 
@@ -57,7 +57,7 @@ Mode A is the primary, lowest-risk flow. Mode B populates many *children* quickl
 
 ### Mode A — single deposit (host record: Resource or Archival Object)
 
-The staff user selects the **host record** — a Resource or an Archival Object — then opens **Instances → Add Digital Object → Create**, which renders the native **"Create Digital Object"** modal containing the standard **File Versions** subrecord form. The deposit control lives in that File Versions form. Because the same subrecord form is reused on the standalone Digital Object / Digital Object Component edit screens, those are supported entry points too, at no extra cost.
+The staff user selects the **host record** — a Resource or an Archival Object — then opens **Instances → Add Digital Object → Create**, which renders the native **"Create Digital Object"** modal containing the standard **File Versions** subrecord form. The deposit control lives in that File Versions form. Although the same subrecord form is *also* reused on the standalone Digital Object edit screen (and on Digital Object Components), the plugin **scopes the control to the host-record context** so it renders only inside the Resource/AO Create Digital Object modal — it is deliberately **not** injected on the standalone `digital_objects` controller, and Digital Object Components are out of scope (A-21 / D-17). This costs one context guard rather than a global subrecord injection.
 
 **Observed workflow (from user studies; shown for a child Archival Object, identical on a Resource):**
 
@@ -102,12 +102,12 @@ Mode C preserves **one file → one repository item → one Digital Object** (st
 
 This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`](A3-4-as-sword-deposit.md), which defines *what*: roles, config table, BS01–BS03, ES01–ES04, gaps G-01–G-10) to implementation planning (*which plugin, controllers, JSONModels, and client library would change*).
 
-**In scope for v0.1–v0.7:**
+**In scope for v0.1–v0.8:**
 
 1. ArchivesSpace deployment/plugin context and where HTTP requests land
 2. **Host record = a Resource or an Archival Object** (A-20): all three modes start from the staff edit view of either, since both expose the Instances group and the same tree
-3. **Mode A** — entry from the **host record → Instances → Add Digital Object → Create** modal (primary), plus the standalone **Digital Object** / **Digital Object Component** edit screens (same subrecord form)
-4. An **"Upload File Version"** control aligned with the existing **"Add File Version"** button, in every context where the File Versions subrecord form is rendered
+3. **Mode A** — entry from the **host record → Instances → Add Digital Object → Create** modal, on **Resource and Archival Object edit views only** (the control is scoped to that context — A-21 / D-17)
+4. An **"Upload File Version"** control aligned with the existing **"Add File Version"** button, injected **only** where the File Versions subrecord form renders **within a Resource/AO Create Digital Object modal** (scoped away from the standalone Digital Object controller — A-21)
 5. **Mode B** — an **"Upload and Link"** panel on the **host record** (Resource or AO) listing immediate children with one file input each, and a single action that deposits + creates + links a Digital Object per child (server-side)
 6. **Mode C** — an **"Upload Digital Objects"** button in the Instances section of the **host record** (Resource or AO) that multi-selects files and creates one Digital Object per file (Title = filename, Identifier = returned URI, plus one File Version — A-19), linked to the host record and saved with it
 7. The `DepositEntry` contract (one file → one repository item); `DepositBatch` = N × `DepositEntry`, realized by Modes B and C (fail-forward, G-07)
@@ -116,8 +116,10 @@ This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`]
 10. Configuration model at the repository level
 11. Error handling mapped to parent ES01–ES04, including partial-batch failure for Modes B and C
 
-**Out of scope for v0.1–v0.7 (deferred):**
+**Out of scope for v0.1–v0.8 (deferred or excluded):**
 
+- **Standalone Digital Object edit views as an entry point** (v0.8, D-17): the deposit controls are **not** shown on the `digital_objects` controller. Staff editing a Digital Object directly still get the native "Add File Version" only. The feature initiates exclusively from a Resource or Archival Object (A-20 / A-21).
+- **Digital Object Components** are excluded entirely (v0.8, D-17): no deposit control, no create/link, no Mode B/C handling for DOCs.
 - **Multiple File Versions on a single Digital Object from one multi-select** (de-prioritized: Mode C multi-select yields *one Digital Object per file*, not many File Versions on one Digital Object)
 - The multi-page **deposit wizard** with **drag-and-drop** file→archival-object mapping described in parent BS02/BS03 (*explicitly deferred at client direction*). Mode B covers one file per immediate child; Mode C covers many files onto one AO; the free-form drag-drop mapping across arbitrary tree depth remains deferred, but reuses the same `DepositBatch` machinery.
 - **Non-immediate descendants**: Mode B lists only the parent's **direct** children (A-15); deep/recursive selection is deferred.
@@ -137,7 +139,7 @@ This document is the bridge from the behavior spec ([`A3-4-as-sword-deposit.md`]
 | Parent gap | What is missing for developers |
 |------------|--------------------------------|
 | G-02 | Whether AS stores binaries. **Resolved here:** it does not — AS is a CMS, not a DAMS; binaries come from the **staff user's browser** at deposit time. |
-| G-03 | Where the deposit initiates. **Resolved here:** primarily the **Archival Object → Instances → Add Digital Object → Create** modal, via an "Upload File Version" control in the **File Versions** subrecord section, aligned with "Add File Version". The same control appears wherever that subrecord form renders (standalone Digital Object / Component edit). |
+| G-03 | Where the deposit initiates. **Resolved here:** the **host record (Resource or Archival Object) → Instances → Add Digital Object → Create** modal, via an "Upload File Version" control in the **File Versions** subrecord section, aligned with "Add File Version". The control is **scoped to the Resource/AO context** — it is not shown on standalone Digital Object edit views, and Digital Object Components are excluded (A-21 / D-17). |
 | G-06 | Item/file granularity. **Resolved here:** **1:1:1** — one file → one DSpace item → one Digital Object; the returned URI is written to **both** the Digital Object **Identifier** (`digital_object_id`, required) and a **File Version** `file_uri` (A-19). |
 | G-04 / G-05 | Package format and metadata mapping. **Partially open:** v0.1 uses **binary deposit**; descriptive-metadata mapping is a **placeholder** (M-01). |
 | G-08 | SWORD version abstraction. **Resolved here:** `SwordProtocolAdapter` interface, v2 impl + v3 stub. |
@@ -167,7 +169,7 @@ This mirrors the `LinkEntry`/`LinkBatch` and `create_digital_object` patterns fr
 | A-08 | **Authentication (v2)** is **HTTP Basic Auth** with a service credential configured per AS repository (parent G-01; per-user credentials deferred). |
 | A-09 | Deposit is **synchronous from the user's perspective** in v0.1. Even if the endpoint returns SWORD **In-Progress**, AS still writes the File Version immediately; staff manage visibility via existing **Publish?** and **Make Representative** controls. |
 | A-10 | **Descriptive metadata mapping AS → repository is not finalized.** v0.1 deposits binaries with a **minimal, configurable metadata stub** (at least a title/slug); full mapping is M-01 pending AS + DSpace teams. |
-| A-11 | **The target Digital Object may not be persisted at deposit time.** In the primary Archival Object flow, the "Create Digital Object" modal holds an *unsaved* record (verified 2026-07-19: no ID/URI until "Create and Link"). Therefore the deposit **must not** depend on a saved AS record: it obtains the `file_uri` and **populates the in-memory File Version row**; AS persists everything on the record's normal Save / "Create and Link". This is the same client-side subrecord form used on the standalone Digital Object edit screen. |
+| A-11 | **The target Digital Object may not be persisted at deposit time.** In the primary Archival Object flow, the "Create Digital Object" modal holds an *unsaved* record (verified 2026-07-19: no ID/URI until "Create and Link"). Therefore the deposit **must not** depend on a saved AS record: it obtains the `file_uri` and **populates the in-memory File Version row**; AS persists everything on the record's normal Save / "Create and Link". This is the same client-side subrecord form ArchivesSpace also renders on the standalone Digital Object edit screen — but the deposit control is **not** injected there (A-21). |
 | A-12 | **Metadata for the SWORD package is sourced from the deposit context, not a saved Digital Object**: the values being entered in the modal (Title, Identifier) and/or the **host record** — the Resource or Archival Object being edited, or (Mode B) the target child Archival Object — which *is* persisted and has a ref. See M-01. |
 | A-13 | **One binary per host record (Mode A/C) or per child (Mode B); the target records always pre-exist the deposit.** Staff create the Archival Objects first, then deposit a single file for each. In Mode A they iterate across the tree manually; in Mode B they populate many children in one action; in Mode C many files land on one host record. Each deposit is a single `DepositEntry`. |
 | A-14 | **Mode B writes server-side.** Because Mode B spans **sibling** records (many child Archival Objects) rather than one open form, it cannot rely on the native "Create and Link" form save. The plugin creates each Digital Object and links it to its child Archival Object via the **JSONModel API** (`create_digital_object` + append a digital-object instance to the child AO; AS has no PATCH → GET→merge→POST). This is the same server-side path A-11 marks optional for Mode A. |
@@ -176,7 +178,8 @@ This mirrors the `LinkEntry`/`LinkBatch` and `create_digital_object` patterns fr
 | A-17 | **Mode C creates one Digital Object per file, all linked to the current Archival Object.** Each deposited file yields a distinct Digital Object with **Title = file name without extension**, **Identifier (`digital_object_id`) = returned URI**, and **one File Version** (`file_uri` = returned URI, A-19); a digital-object instance for each is added to the AO being edited. Multi-select is supported here (unlike Modes A/B) because the fan-out is *files → Digital Objects*, still 1:1 per file. |
 | A-18 | **Mode C persists on the host record's native Save.** Like Mode A (A-11), the plugin populates the open host-record edit form — a Resource or Archival Object (A-20) — with its Instances subrecords client-side; ArchivesSpace creates the new Digital Objects and their instance links when the staff user saves the host record. No plugin-side server write is required on the default path (contrast Mode B, A-14). *Whether the host-record form serializes multiple nested new Digital Objects on a single save should be verified against the sandbox before build (see D-13).* |
 | A-19 | **The returned URI is written to two Digital Object fields, in every mode.** (1) **Identifier** (`digital_object_id`) — a **required** field on Digital Objects (so it must be set at create time regardless), holding the canonical/original deposit URI; and (2) a **File Version** `file_uri` (public item URL, A-07) — because the ArchivesSpace PUI renders a clickable "view online" link only from a File Version, not from the Identifier (sandbox-verified 2026-07-20). File Versions therefore remain available for the *future* re-deposit / new-upload scenario (G-10), while the initial deposit populates both fields. |
-| A-20 | **The starting point (host record) may be a Resource or an Archival Object.** Both record types expose the same **Instances** subrecord group (with "Add Digital Object → Create") and share the resource **tree**, and both can carry digital-object instances — so all three modes work identically regardless of type. The only type-dependent behavior is Mode B's *immediate children* (Resource → top-level AOs; AO → child AOs). Digital Object *Component* remains a Mode A subrecord-only entry point (no Instances group of its own). |
+| A-20 | **The starting point (host record) may be a Resource or an Archival Object — and only those two.** Both record types expose the same **Instances** subrecord group (with "Add Digital Object → Create") and share the resource **tree**, and both can carry digital-object instances — so all three modes work identically regardless of type. **Sandbox-confirmed 2026-07-20:** a Resource has the same Instances options as an AO, and a Resource in the top tree shows its AO children. The only type-dependent behavior is Mode B's *immediate children* (Resource → top-level AOs; AO → child AOs). |
+| A-21 | **The feature is confined to Resource and Archival Object edit views (D-17).** The "Create Digital Object" modal reuses the shared File Versions subrecord form that ArchivesSpace *also* renders on the standalone **Digital Object** edit screen; the plugin must therefore **scope its injection to the host-record context** (e.g. gate on the parent controller being `resources`/`archival_objects`, or on the File Versions form's DOM ancestry within a Resource/AO instances subrecord) so the deposit control does **not** appear when a Digital Object is edited directly. **Digital Object Components are out of scope**: no control, no create/link, no batch handling. Standalone Digital Object editing keeps its native "Add File Version" behavior unchanged. |
 
 ---
 
@@ -214,7 +217,7 @@ flowchart TB
 | Actor | Role |
 |-------|------|
 | **AS Administrator** | Configures per-repository SWORD endpoint(s), credentials, default collection, protocol version, master enable (parent BS01). |
-| **AS Staff User (Mode A)** | Selects the host record — a Resource or Archival Object (primary) — or edits a Digital Object / Component — chooses **one** local file and triggers deposit; reviews the resulting Identifier + File Version; sets Publish / Representative; saves via "Create and Link" / Save; moves to the next record and repeats. |
+| **AS Staff User (Mode A)** | Selects the host record — a Resource or Archival Object — opens the Create Digital Object modal, chooses **one** local file and triggers deposit; reviews the resulting Identifier + File Version; sets Publish / Representative; saves via "Create and Link"; moves to the next record and repeats. (The control is not offered when editing a Digital Object directly — A-21.) |
 | **AS Staff User (Mode B)** | On the host record (Resource or parent Archival Object), picks one local file per immediate child in the "Upload and Link" panel, clicks **"Upload and Link"** once, and reviews the per-child result summary. |
 | **AS Staff User (Mode C)** | On the host record (Resource or Archival Object), clicks **"Upload Digital Objects,"** multi-selects files, reviews the Digital Objects populated into Instances (Title = filename, Identifier = URI, + a File Version), then clicks **Save**. |
 | **Repository/Collection manager** | Configures SWORD permissions and collections on the target repository (outside AS). |
@@ -229,8 +232,8 @@ Assume staff host `https://as.example.edu` (SUI):
 |---------|---------|-------|
 | **Resource edit (host record)** | `/resources/16/edit` | Instances group + tree at the collection root; all three modes available here (A-20) |
 | **Archival Object edit (host record)** | `/resources/16/edit#tree::archival_object_1646` | Same Instances group + tree at an AO node; all three modes available here |
-| Digital Object edit (existing) | `/digital_objects/27/edit` | Same File Versions subrecord form (Mode A) |
-| Digital Object Component edit (existing) | `/digital_objects/27/edit#tree::digital_object_component_1` | Same File Versions subrecord form (Mode A; Identifier lives on the parent DO — A-20) |
+| Digital Object edit (existing) | `/digital_objects/27/edit` | **Out of scope (A-21 / D-17):** reuses the same File Versions form, but the plugin does **not** inject the deposit control here — native "Add File Version" only |
+| Digital Object Component edit (existing) | `/digital_objects/27/edit#tree::digital_object_component_1` | **Out of scope (A-21 / D-17):** Digital Object Components are excluded from the feature entirely |
 | **Proposed upload endpoint (Mode A)** | `POST /plugins/sword_deposit/deposit` | Multipart; params: repo id, **one** file, optional host-record ref, in-form metadata (title/identifier) |
 | **Proposed batch endpoint (Mode B)** | `POST /plugins/sword_deposit/deposit_and_link` | Multipart; params: repo id, host-record ref, and per-child `{ child_ao_ref → file }` pairs; returns a per-child result report |
 | **Proposed multi-DO endpoint (Mode C)** | `POST /plugins/sword_deposit/deposit_digital_objects` | Multipart; params: repo id, **many** files, host-record ref; returns a per-file report of `{ title, identifier(file_uri), file_uri, status }` for in-form population |
@@ -245,9 +248,9 @@ Assume staff host `https://as.example.edu` (SUI):
 | Area | Role in feature | Expected change level |
 |------|-----------------|------------------------|
 | **New plugin** `plugins/sword_deposit/` | Primary — controllers, service, SWORD adapter, config, JS, views, locales | **Major (new)** |
-| Staff UI subrecord form for `file_version` | **Mode A:** add "Upload File Version" control beside "Add File Version"; render resulting File Versions | **Moderate (via plugin override/partial)** |
+| Staff UI subrecord form for `file_version` | **Mode A:** add "Upload File Version" control beside "Add File Version", **scoped to the Resource/AO Create Digital Object modal** (not the standalone `digital_objects` controller — A-21); render resulting File Versions | **Moderate (via plugin override/partial + context guard)** |
 | Staff UI **Resource / Archival Object edit** (Instances area) | Both record types share this UI (A-20). **Mode B:** inject the "Upload and Link" panel listing immediate children. **Mode C:** inject the "Upload Digital Objects" button beside "Add Digital Object" | **Moderate (via plugin partial/hook)** |
-| `digital_object` JSONModel | All modes write **Identifier (`digital_object_id`, required) + one `file_version`** (A-19). **Mode A:** in-form on the DO being created. **Mode B:** `create_digital_object` server-side. **Mode C:** one new DO per file via the host record form's nested instances on save | **None (data only)** |
+| `digital_object` JSONModel | All modes write **Identifier (`digital_object_id`, required) + one `file_version`** (A-19). **Mode A:** in-form on the DO being created. **Mode B:** `create_digital_object` server-side. **Mode C:** one new DO per file via the host record form's nested instances on save. (`digital_object_component` is **not** touched — A-21.) | **None (data only)** |
 | `resource` / `archival_object` JSONModel | **Mode B:** append a digital-object `instances[]` entry linking the new Digital Object to each child AO (server-side). **Mode C:** append **N** digital-object `instances[]` entries to the host record (Resource or AO), persisted on Save | **None (data only)** |
 | Resource/AO **tree API** | **Mode B:** enumerate the host record's immediate children — top-level AOs for a Resource, child AOs for an AO (A-16/A-20) | **None (read only)** |
 | Repository configuration UI | Host SWORD Deposit Settings section | **Minor (plugin-provided)** |
@@ -266,7 +269,7 @@ ArchivesSpace has **no SWORD code today**. Closest reusable machinery:
 
 | Component | Reuse |
 |-----------|-------|
-| `file_version` subrecord form partial (staff UI) | The section rendered under **File Versions**; "Add File Version" is its subrecord-add control. The new control lives here, in every rendering context. |
+| `file_version` subrecord form partial (staff UI) | The section rendered under **File Versions**; "Add File Version" is its subrecord-add control. The new control lives here **but only when the form renders inside a Resource/AO Create Digital Object modal** — the plugin gates on host-record context so it is absent when a Digital Object (or Component) is edited directly (A-21). |
 | Subrecord add JS (`add_subrecord` / `subrecord.js` patterns) | Precedent for appending a File Version row client-side; the upload flow appends **populated** rows (with `file_uri`) instead of empty ones. |
 | `is_representative` / "Make Representative" | Left to the staff user post-deposit (A-09). |
 | `publish` checkbox | Default `true` on deposited File Versions; staff can toggle (A-09). |
@@ -288,7 +291,7 @@ Both Resources and Archival Objects expose the identical Instances group and "Ad
 | Component | Reuse |
 |-----------|-------|
 | Native subrecord form submit ("Create and Link" / Save) | **Default write path (A-11):** the deposited File Version row is populated in the form and persisted by AS's own save. Works whether the Digital Object pre-exists or is being created inline. No plugin-side JSONModel write required. |
-| `JSONModel(:digital_object)` / `JSONModel(:digital_object_component)` (`find → append → save`) | **Optional path only** for a *pre-existing, already-saved* Digital Object if immediate auto-save is later chosen (D-03). Not usable in the unsaved AO-create modal. AS has no PATCH; this is the GET→merge→POST equivalent. |
+| `JSONModel(:digital_object)` (`find → append → save`) | **Optional path only** for a *pre-existing, already-saved* Digital Object if immediate auto-save is later chosen (D-03). Not usable in the unsaved AO-create modal. AS has no PATCH; this is the GET→merge→POST equivalent. (Digital Object Components are excluded — A-21.) |
 | Frontend authenticated backend session | Plugin controller reuses the staff session's backend token — no separate auth. |
 
 ### Host-record children + create/link (Mode B)
@@ -353,7 +356,7 @@ plugins/sword_deposit/
     archival_object_children.rb          # Mode B: enumerate parent's immediate children (tree API)
     digital_object_instance_builder.rb   # Mode C: build a nested DO instance (Title, Identifier=URI) per file
     metadata/
-      as_record_metadata.rb              # pull title/label from DO/DOC (+ archival object)
+      as_record_metadata.rb              # pull title/label from the host record (Resource/AO) + DO being created
       dc_mapper.rb                        # AS -> Dublin Core (PLACEHOLDER, see M-01)
       deposit_package.rb                  # binary (+ optional minimal metadata) wrapper
     sword/
@@ -431,13 +434,13 @@ end
 
 ### File Version + Identifier population (client-side, default path)
 
-On a successful deposit the browser receives `{ filename, file_uri }` and populates the current
-Digital Object form with **both** targets (A-19): it sets the Digital Object **Identifier**
-(`digital_object_id`, a required field — the canonical URI) **and injects a populated File
-Version row** (the same DOM the native "Add File Version" button drives). AS persists both on
-Save / "Create and Link" (A-11). No plugin-side JSONModel write is needed, so this works
-identically in the unsaved child Archival Object → Create Digital Object modal and on a saved
-Digital Object edit screen.
+On a successful deposit the browser receives `{ filename, file_uri }` and populates the
+**Create Digital Object** modal (opened from a Resource or Archival Object) with **both**
+targets (A-19): it sets the Digital Object **Identifier** (`digital_object_id`, a required
+field — the canonical URI) **and injects a populated File Version row** (the same DOM the
+native "Add File Version" button drives). AS persists both on "Create and Link" (A-11). No
+plugin-side JSONModel write is needed. The handler is wired **only** in this host-record
+modal context — not on the standalone Digital Object edit screen (A-21).
 
 ```javascript
 // sword_deposit.js (sketch): after POST /plugins/sword_deposit/deposit (one file)
@@ -449,9 +452,10 @@ function onDepositResult(r) {
   $row.find("[name$='[publish]']").prop("checked", true); // A-09; staff can toggle
   // is_representative left unchecked -> staff uses "Make Representative"
 }
-// persistence happens on the native "Create and Link" / Save submit
-// Note: on a Digital Object Component (DOC), the Identifier lives on the parent DO,
-// so only the File Version is populated there; the Identifier is set when the DO is the target.
+// persistence happens on the native "Create and Link" submit
+// Note (A-21): this handler is wired only inside the Resource/AO Create Digital Object modal.
+// It is not bound on the standalone digital_objects edit view, and Digital Object
+// Components are out of scope entirely.
 ```
 
 **Optional immediate-save path (pre-existing Digital Object only, see D-03):** if a future
@@ -640,18 +644,18 @@ Reached via **Repository management → SWORD Deposit Settings** (parent §Confi
 
 ### Mode A — "Upload File Version" (host record: Resource or Archival Object)
 
-The control lives **in the File Versions subrecord section**, aligned with **Add File Version** (per the observation that "Add File Version" simply appends an empty File Version row). Because that subrecord form is shared, a single injection covers all Mode A entry points.
+The control lives **in the File Versions subrecord section of the Create Digital Object modal**, aligned with **Add File Version** (per the observation that "Add File Version" simply appends an empty File Version row). The File Versions form is shared with the standalone Digital Object edit screen, so the plugin **must scope the injection** to the Resource/AO modal context (A-21) — it is not a global File Versions override.
 
 **Flow:** select the host record (a Resource, or a child Archival Object) in the tree → Instances → **Add Digital Object** → dropdown → **Create** → the "Create Digital Object" modal opens → scroll to **File Versions** → **"Upload File Version"** → select **one** file → the Identifier and a File Version row are populated with the returned URI → **"Create and Link"** persists the Digital Object and the instance link to the host record → move to the **next** record and repeat.
 
 | Element | Behavior |
 |---------|----------|
-| Entry contexts | The "Create Digital Object" modal (from a Resource or an Archival Object), the standalone Digital Object edit screen, and the Digital Object Component edit screen — anywhere the File Versions subrecord renders. |
-| **"Upload File Version"** button | Rendered next to "Add File Version" when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
+| Entry contexts | **Only** the "Create Digital Object" modal opened from a **Resource or Archival Object** Instances group. **Not** shown on the standalone Digital Object edit screen; **Digital Object Components are out of scope** (A-21 / D-17). |
+| **"Upload File Version"** button | Rendered next to "Add File Version" in that modal when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
 | Hidden file input | `<input type="file" accept=".pdf">` — **single file** (A-13; no `multiple`). |
 | Collection select | Shown only if >1 collection or no default; else uses `default_collection_href`; "None" allowed (parent BS02). |
 | Progress + result | Upload progress; on success, **set the Digital Object Identifier** (required, canonical URI) and **populate a File Version row** (`file_uri`, `publish` checked) exactly as if added manually (A-19); on failure, inline error (ES02/ES03/ES04). |
-| Save semantics | The Identifier and the deposited File Version are populated into the in-memory form and persisted on the record's normal **Save** / **"Create and Link"** (A-11). No auto-save is required; see D-03. |
+| Save semantics | The Identifier and the deposited File Version are populated into the in-memory form and persisted on **"Create and Link"** (A-11). No auto-save is required; see D-03. |
 
 ### Mode B — "Upload and Link" panel (host record: Resource or Archival Object)
 
@@ -706,7 +710,7 @@ Every mode writes the returned URI to **both** Digital Object fields (A-19): the
 | B | New Digital Object per child | child AO `display_string` (M-01) | returned URI (required) | returned URI (A-07) |
 | C | New Digital Object per file | **filename without extension** (A-17) | returned URI (required) | returned URI (A-07) |
 
-> **D-14 (resolved 2026-07-20):** write **both**. The Digital Object **Identifier** (`digital_object_id`) is a **required** field and holds the canonical/original URI; a **File Version** `file_uri` carries the same URI so the PUI renders a clickable "view online" link (sandbox-verified: Identifier-only shows plain text; a File Version shows a clickable button). This also keeps File Versions available for the future re-deposit / new-upload scenario (G-10). *For a Digital Object Component (Mode A on a DOC), the Identifier lives on the parent Digital Object, so only the File Version is written on the component itself.*
+> **D-14 (resolved 2026-07-20):** write **both**. The Digital Object **Identifier** (`digital_object_id`) is a **required** field and holds the canonical/original URI; a **File Version** `file_uri` carries the same URI so the PUI renders a clickable "view online" link (sandbox-verified: Identifier-only shows plain text; a File Version shows a clickable button). This also keeps File Versions available for the future re-deposit / new-upload scenario (G-10).
 
 ### Packaging modes behind the adapter (future-proofing)
 
@@ -772,7 +776,7 @@ sequenceDiagram
   Note over S,B: Staff clicks next child Archival Object and repeats
 ```
 
-> Mode A performs **no AS write** during the deposit; it returns the `file_uri` for in-form population (A-11). AS persistence — creating the Digital Object (with its required Identifier and a File Version, A-19) and the instance link back to the child Archival Object — happens on the native **"Create and Link"** submit. On a standalone Digital Object edit screen the flow is identical except the final submit is **Save** on the existing record. The staff user then selects the next child in the tree and repeats (A-13).
+> Mode A performs **no AS write** during the deposit; it returns the `file_uri` for in-form population (A-11). AS persistence — creating the Digital Object (with its required Identifier and a File Version, A-19) and the instance link back to the host record — happens on the native **"Create and Link"** submit. The staff user then selects the next host record in the tree and repeats (A-13). The deposit control is **not** offered on the standalone Digital Object edit screen (A-21).
 
 ## Data flow: Mode B (batch "Upload and Link")
 
@@ -868,7 +872,8 @@ sequenceDiagram
 | D-13 | **Mode C multi-nested create on one save** | In-form nested create of N Digital Objects on the host record's Save vs server-side pre-create per file | **In-form nested create** (A-18) — orphan-free and consistent with Mode A; **verify in the sandbox** that the Resource/AO form serializes multiple nested new Digital Objects, else fall back to server-side pre-create |
 | D-14 | **Where the returned URI lands (all modes)** | Identifier only vs File Version only vs **both** | **Both (resolved 2026-07-20):** Identifier (`digital_object_id`, *required*) = canonical URI **and** a File Version `file_uri` = same URI for the PUI clickable link (sandbox-verified). Applies to Modes A, B, and C (A-19) |
 | D-15 | **Mode C button placement/label** | "Upload Digital Objects" beside "Add Digital Object" vs elsewhere in Instances | **Beside "Add Digital Object"** in the Instances section (matches the client ask); confirm label/UX |
-| D-16 | **Host record types** | Archival Objects only vs **Resources and Archival Objects** | **Both (client ask, 2026-07-20):** start from a Resource or an Archival Object; identical UI/tree (A-20). Digital Object / Digital Object Component remain Mode A subrecord-only entry points |
+| D-16 | **Host record types** | Archival Objects only vs **Resources and Archival Objects** | **Both (client ask, sandbox-confirmed 2026-07-20):** start from a Resource or an Archival Object; identical Instances UI/tree (A-20) |
+| D-17 | **Visibility on Digital Objects / Components** | Also inject on standalone DO (and DOC) edit screens vs **Resource/AO only** | **Resource/AO only (client ask, 2026-07-20):** do **not** show deposit controls on the standalone Digital Object edit view; **exclude Digital Object Components entirely**. Implementation must scope the File Versions injection to the host-record Create Digital Object modal (A-21) |
 
 ---
 
@@ -878,7 +883,7 @@ sequenceDiagram
 |------|-------------|------|
 | **0 — Spike** | Native v2 binary deposit against a test DSpace SWORD endpoint; parse receipt → item URL | `lib/sword` |
 | **1 — Config** | Per-repository SWORD settings + Test connection + enable flag | frontend/backend config |
-| **2 — Upload UI (Mode A)** | "Upload File Version" control (single file), progress, in-form row + Identifier population; injected into the File Versions subrecord in the Resource/AO "Create Digital Object" modal **and** the DO/DOC edit screens | frontend assets/views |
+| **2 — Upload UI (Mode A)** | "Upload File Version" control (single file), progress, in-form row + Identifier population; injected into the File Versions subrecord **only** in the Resource/AO "Create Digital Object" modal (scoped away from standalone DO / DOC — A-21) | frontend assets/views |
 | **3 — Deposit + in-form population (Mode A)** | `DepositEntry` (single file), metadata from context (form + host record), return `file_uri`; populate **Identifier + File Version** (A-19); persistence via native Save / "Create and Link" | `lib` |
 | **4 — Batch Upload-and-Link (Mode B)** | "Upload and Link" panel listing immediate children of a Resource or AO (tree API); `deposit_and_link_batch` + `DigitalObjectLinker` (create DO with Identifier + File Version, link per child); per-child report; fail-forward | frontend + `lib` |
 | **5 — Multi-DO Upload (Mode C)** | "Upload Digital Objects" button (multi-select) in the Resource/AO Instances; `deposit_digital_objects_batch` + `DigitalObjectInstanceBuilder` (Title = filename, Identifier = URI, one File Version); in-form instance population; verify multi-nested create (D-13) | frontend + `lib` |
@@ -912,3 +917,4 @@ sequenceDiagram
 | 0.5-draft | 2026-07-20 | Added **Mode C — "Upload Digital Objects"**: a button in the Instances section of a single Archival Object that **multi-selects** files and creates **one Digital Object per file** (Title = filename without extension, Identifier = returned URI), all linked to that AO and persisted on the native **"Save Archival Object."** Reframed the doc around **three modes** sharing the `DepositEntry` primitive; clarified that Mode C reintroduces multi-select as *files → Digital Objects* (not File Versions on one DO). Added A-17/A-18, `UploadDigitalObjectsController` / `deposit_digital_objects_batch` / `DigitalObjectInstanceBuilder` components + JS sketch, a per-mode field-mapping table, a third data-flow diagram, and D-13–D-15 (multi-nested-create verification, URI-vs-File-Version, button placement). Renumbered epics (added Mode C as Epic 5). |
 | 0.6-draft | 2026-07-20 | **Resolved D-14 → write both fields, all modes.** The returned URI is now recorded on every deposited Digital Object in **both** its required **Identifier** (`digital_object_id`, canonical URI) **and** a **File Version** `file_uri` (clickable PUI link). Confirmed by sandbox test (Identifier-only renders as plain text; a File Version renders a clickable button) and by learning that Identifier is a **required** field. Added **Mode C's File Version** (builder/JS/UI/data-flow), and **added the Identifier write to Modes A and B** (in-form population, `DigitalObjectLinker`, data-flow diagrams). Added A-19, updated A-06/G-06, the per-mode field-mapping table, "Which IRIs to keep," areas-touched, and epics. Noted the Digital Object Component nuance (Identifier lives on the parent DO). |
 | 0.7-draft | 2026-07-20 | **Generalized the starting point to a Resource *or* an Archival Object** (client ask). Introduced the **"host record"** concept: both record types expose the same Instances group and tree and can carry digital-object instances, so all three modes work identically from either (A-20, D-16). The only type-dependent behavior is Mode B's *immediate children* (Resource → top-level AOs; AO → child AOs — A-15). Threaded "host record" through the three-modes table, Mode A/B/C narratives and UI sections, actors, URL shapes (added Resource edit + resource tree root), areas-touched (`resource`/`archival_object` JSONModel), reuse map, controller/service sketches (`host_ref`), and all three data-flow diagrams. Noted DO/DOC remain Mode A subrecord-only entry points. |
+| 0.8-draft | 2026-07-20 | **Confined the feature to Resource and Archival Object edit views** (client ask). Deposit controls are **not** shown on the standalone Digital Object edit screen; **Digital Object Components are out of scope entirely** (A-21 / D-17). Mode A's "Upload File Version" injection is scoped to the Resource/AO Create Digital Object modal (shared File Versions form requires an explicit context gate). **Sandbox-confirmed** that a Resource has the same Instances options and shows AO children in the top tree (A-20). Updated purpose, in/out-of-scope, UI entry contexts, data-flow notes, epics, and decisions. |
