@@ -515,20 +515,20 @@ Embed link from Fedora Confluence / project site (per BS01 navigation — exact 
 
 ### Decision matrix
 
-| Criterion | A: Google | B: GitHub | C: Dedicated |
+| Criterion | A: GitHub | B: Google | C: Dedicated |
 | :---- | :---- | :---- | :---- |
-| Time to Phase I MVP | **Days–1 week** | **1–2 weeks** | 2–4+ months |
-| GitHub SSO | Poor | **Excellent** | Good (OAuth) |
-| Version history | Sheet history | **Git log** | Audit table |
-| PR / review workflow | Manual | **Native** | Custom |
-| Public read API | Apps Script adapter | **index.json** (+ wrapper later) | **Native REST** |
-| Non-dev contributors | **Excellent** (Forms) | Moderate (Issue Form helps) | Excellent (custom UI) |
-| Aligns with LYRASIS GitHub presence | Low | **High** | Medium |
-| June 2026 feasibility | High | **High** | Low unless staffed |
+| Time to Phase I MVP | **1–2 weeks** | **Days–1 week** | 2–4+ months |
+| GitHub SSO | **Excellent** | Poor | Good (OAuth) |
+| Version history | **Git log** | Sheet history | Audit table |
+| PR / review workflow | **Native** | Manual | Custom |
+| Public read API | **index.json** (+ wrapper later) | Apps Script adapter | **Native REST** |
+| Non-dev contributors | Moderate (Issue Form helps) | **Excellent** (Forms) | Excellent (custom UI) |
+| Aligns with LYRASIS GitHub presence | **High** | Low | Medium |
+| June 2026 feasibility | **High** | High | Low unless staffed |
 
 ### Recommended path
 
-**Phase I (June 2026): Option B — GitHub-native registry** in `lyrasisorghome` org, with:
+**Phase I (June 2026): Option A — GitHub-native registry** in `lyrasisorghome` org, with:
 
 - YAML records \+ JSON Schema validation in CI  
 - GitHub Pages search UI (source × target matrix filters)  
@@ -537,7 +537,7 @@ Embed link from Fedora Confluence / project site (per BS01 navigation — exact 
 
 **Phase II:** Publish `registry/index.json` at stable URL; add optional Cloudflare Worker implementing the logical REST paths; or migrate to Option C if volume and UX demand it.
 
-**Option A** remains valid if Lyrasis insists on zero GitHub contribution friction and accepts Google accounts instead of GitHub SSO.
+**Option B** remains valid if Lyrasis insists on zero GitHub contribution friction and accepts Google accounts instead of GitHub SSO.
 
 ## Seed content plan (implementation phase)
 
@@ -698,7 +698,7 @@ Populate **10–15 records** as specified in issue \#58:
 
 ## Next steps
 
-1. **Stakeholder pick:** Confirm Option B (GitHub) vs A (Google) vs C (build app) — one meeting, use decision matrix above.  
+1. **Stakeholder pick:** Confirm Option A (GitHub) vs B (Google) vs C (build app) — one meeting, use decision matrix above.  
 2. **Create registry repo** (if B): schema, CI, Pages stub, Issue Form, PR template.  
 3. **Backfill seed records** from existing specs in this repo.  
 4. **Fold** chosen platform specifics back into [`F1-integration-scenario-registry.md`](http://F1-integration-scenario-registry.md) Integration Architecture table (replace TBD rows).  
