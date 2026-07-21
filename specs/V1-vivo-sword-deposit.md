@@ -41,7 +41,7 @@ Systems: VIVO / any SWORD-enabled IR
 
 # **Purpose and Scope** {#purpose-and-scope}
 
-This specification defines **how VIVO would implement** a workflow in which a signed-in researcher uploads a publication file (PDF, or ZIP containing a PDF plus metadata) from their profile, VIVO deposits the package to a configured IR via **SWORD v2**, and then creates or updates a **publication record on the profile** linked to the IR item URI returned by the deposit. SWORD v2 is the primary protocol in scope. There are currently no known implementations of SWORD v3, but the spec notes where SWORD v3 configuration would differ from v2, should any v3 servers be built in the future.
+This specification defines **how VIVO would implement** a workflow in which a signed-in researcher uploads a publication file — either a single **PDF** (no accompanying metadata) or a **METS-compliant ZIP** (for example, a PDF plus a METS-formatted XML file) — from their profile, VIVO deposits the package to a configured IR via **SWORD v2**, and then creates or updates a **publication record on the profile** linked to the IR item URI returned by the deposit. SWORD v2 is the primary protocol in scope. There are currently no known implementations of SWORD v3, but the spec notes where SWORD v3 configuration would differ from v2, should any v3 servers be built in the future.
 
 With this feature, users will achieve two steps of their RDM/RIM workflow at once: deposit publications and display linked references to them on their VIVO profile. While the feature should be designed to integrate with any SWORD repository, we will use DSpace as a proof of concept integration and basis for defining required functionality.
 
@@ -52,18 +52,18 @@ This draft covers:
 3. **New components** (proposed packages, class names, responsibilities)  
 4. **Configuration and persistence** — admin UI, endpoint records, credentials, protocol version selection  
 5. **Reference UI touchpoints** — Wilma theme profile page and admin screens only (custom themes out of scope for this deliverable)  
-6. **Metadata extraction and SWORD packaging** — concrete v2 behavior   
+6. **SWORD packaging for PDF and METS ZIP uploads** — concrete v2 behavior   
 7. **High-level request/data flows** with pseudocode sketches  
 8. **SWORD v3 forward compatibility** — adapter hook only; no v3 client in v0.1  
 9. **Open decisions** 
 
 Out of scope for v0.1 (defer to a lower-level design pass or client feedback):
 
-1. Full Atom Entry / METS XML examples for every IR packaging variant  
+1. Authoring the METS package itself — the spec accepts a METS-compliant ZIP as an upload format but does not define how the METS document is produced (see the [DSpace METS SIP Profile](https://wiki.lyrasis.org/spaces/DSDOC10x/pages/446399329/DSpaceMETSSIPProfile) for the reference profile)  
 2. Line-by-line BIBO ↔ IR metadata field mapping for every deployment ontology profile  
 3. IR-side ingest workflow configuration (embargo, review queues, collection policies)  
 4. Retrospective migration of existing IR items into VIVO  
-5. Content-based PDF text extraction (OCR / heuristic parsing of non-XMP PDFs)  
+5. Automated extraction of metadata from uploaded files (PDF text/OCR parsing or reading the METS document)  
 6. SWORD v3 implementation (no production v3 servers identified yet)  
 7. Changes to non-reference themes (`nemo`, `tenderfoot`, etc.)  
 8. Retrieving URL and metadata from a SWORD repository then updating VIVO profile without depositing (will be addressed in revision phase)  
@@ -89,7 +89,7 @@ SWORD (Simple Web-service Offering Repository Deposit) is a standard protocol su
 | Actor | Role |
 | :---- | :---- |
 | VIVO Administrator | Registers one or more IR SWORD endpoints, credentials, default collection, protocol version (v2), and master enable flag via Site Admin. |
-| Researcher / Faculty (VIVO User) | On their own profile (self-editing), uploads PDF/ZIP, reviews extracted metadata, selects target collection, submits deposit. |
+| Researcher / Faculty (VIVO User) | On their own profile (self-editing), uploads a PDF or METS-compliant ZIP, confirms the publication metadata for the VIVO profile record, selects target collection, submits deposit. |
 | SWORD-enabled Repository Manager | Configures SWORD permissions and collections on the IR (outside VIVO). |
 | Profile visitor (end user) | Follows the publication's **web link** on the public profile to the IR item (no deposit UI). |
 | SWORD deposit module (system agent) | Validates upload, extracts metadata, calls SWORD client, writes RDF, logs outcome. |
@@ -187,19 +187,15 @@ VIVO/api/src/main/java/org/vivoweb/webapp/sword/
     PublicationRdfWriter.java            # create bibo individual + authorship + webpage
     SwordDepositAuditLog.java            # timestamp, user, collection, IR URI
   metadata/
-    UploadPackage.java                   # PDF or ZIP wrapper
-    UploadPackageParser.java             # validate MIME, unzip, locate PDF
-    MetadataExtractor.java               # interface
-    XmpMetadataExtractor.java            # PDF XMP / Dublin Core
-    SidecarMetadataExtractor.java        # metadata.json | dublin_core.xml in ZIP
-    ExtractedPublicationMetadata.java    # neutral DTO → mapper input
-    MetadataMergePolicy.java             # sidecar overrides XMP overrides wizard
+    UploadPackage.java                   # PDF or METS ZIP wrapper (stream, filename, md5)
+    UploadPackageParser.java             # validate MIME, classify PDF vs ZIP (no content parsing)
+    PublicationMetadata.java             # researcher-entered metadata for the VIVO profile record
   sword/
     SwordProtocolAdapter.java            # interface: service doc, deposit, status
     SwordV2ClientAdapter.java            # wraps org.swordapp.client.SWORDClient
     SwordV3ClientAdapter.java            # stub / NotImplemented in v0.1
     SwordAdapterFactory.java             # select by configured version (+ future auto-detect)
-    SwordPackageBuilder.java             # build org.swordapp.client.Deposit
+    SwordPackageBuilder.java             # build org.swordapp.client.Deposit; PDF → binary (no packaging), ZIP → setPackaging(METS)
     SwordDepositResult.java              # IR item URI, status IRI, in-progress flag
   model/
     SwordEndpointConfig.java             # endpoint DTO
@@ -221,7 +217,7 @@ public class SwordDepositController extends FreemarkerHttpServlet {
         SimplePermission.EDIT_OWN_ACCOUNT.ACTION;
 
     // GET  /swordDeposit/upload?profileUri=…        → upload form
-    // POST /swordDeposit/upload                     → parse multipart, extract metadata
+    // POST /swordDeposit/upload                     → parse multipart, classify PDF vs METS ZIP
     // GET  /swordDeposit/confirm?…                  → review metadata + pick collection
     // POST /swordDeposit/deposit                    → run SwordDepositService.deposit(...)
 }
@@ -250,21 +246,19 @@ public class SwordV2ClientAdapter implements SwordProtocolAdapter {
 
 ```java
 public SwordDepositResult deposit(VitroRequest vreq, UploadPackage pkg,
-                                  ExtractedPublicationMetadata md,
+                                  PublicationMetadata md,   // researcher-entered, for the VIVO record
                                   String collectionHref, String profileUri) {
-    UploadPackage parsed = uploadPackageParser.parse(pkg);          // validate, unzip
-    ExtractedPublicationMetadata merged = metadataMerge.merge(
-        metadataExtractor.extract(parsed.getPdfStream()),
-        parsed.getSidecarMetadata(),
-        md /* wizard overrides */);
+    UploadPackage parsed = uploadPackageParser.parse(pkg);          // validate MIME, classify PDF vs ZIP
 
     SwordEndpointConfig endpoint = configService.getEnabledEndpoint(...);
     SWORDCollection collection = adapter.resolveCollection(endpoint, collectionHref);
-    Deposit swordDeposit = packageBuilder.build(parsed, merged, endpoint);
+
+    // Fork on upload type: PDF deposits without metadata; ZIP is sent as a METS package.
+    Deposit swordDeposit = packageBuilder.build(parsed, endpoint);
 
     SwordDepositResult result = adapter.deposit(collection, swordDeposit, endpoint);
 
-    publicationRdfWriter.createOrUpdatePublication(profileUri, merged, result.getItemUri());
+    publicationRdfWriter.createOrUpdatePublication(profileUri, md, result.getItemUri());
     auditLog.record(vreq, endpoint, collectionHref, result);
     parsed.dispose();  // delete temp files
     return result;
@@ -307,8 +301,6 @@ Global feature flags and limits. Not editable in the Site Admin UI.
 | `swordDeposit.maxUploadBytes` | `52428800` | Override; default falls back to `fileUpload.maxFileSize` |
 | `swordDeposit.allowedMimeTypes` | `application/pdf,application/zip` | Upload validation |
 | `swordDeposit.defaultProtocolVersion` | `v2` | Used when admin leaves version as `auto` |
-| `swordDeposit.packageType` | `binary` | `binary` (PDF only) or `multipart` (Atom \+ PDF) — must match IR collection `accept` |
-| `swordDeposit.zipMetadataFilenames` | `metadata.json,dublin_core.xml,meta.xml` | Recognized sidecar names inside ZIP |
 | `swordDeposit.tempDir` | `{java.io.tmpdir}/vivo-sword` | Short-lived upload staging |
 
 ### Tier 2 — VIVO administrator (Site Admin UI)
@@ -350,8 +342,8 @@ Stored in **`sword-endpoints.json`** (v0.1) as an array of endpoint records. Edi
 | Location | Change |
 | :---- | :---- |
 | **`individual--foaf-person.ftl`** | When signed in and self-editing, show **Upload Publication** button/link next to existing “Claim publications by DOI/PMID” forms. Links to `/swordDeposit/upload?profileUri={uri}`. |
-| **`swordDepositUpload.ftl`** (new) | File input (`accept=".pdf,.zip"`), short help text describing PDF-with-XMP vs ZIP-with-metadata |
-| **`swordDepositConfirm.ftl`** (new) | Review extracted title, authors, date, abstract, DOI; select IR endpoint (if multiple enabled) and collection; optional license; submit |
+| **`swordDepositUpload.ftl`** (new) | File input (`accept=".pdf,.zip"`), short help text describing the two accepted formats: a single PDF (no metadata) or a METS-compliant ZIP |
+| **`swordDepositConfirm.ftl`** (new) | Enter/confirm title, authors, date, abstract, DOI for the VIVO profile record; select IR endpoint (if multiple enabled) and collection; optional license; submit |
 | **`swordDepositResult.ftl`** (new) | Success → link to new publication on profile \+ link to IR item; failure → actionable error (Error workflow is gap G-06) |
 | **`admin/swordEndpointList.ftl`** (new) | List/add/edit/delete endpoints |
 | **`admin/swordEndpointEdit.ftl`** (new) | Form for Tier 2 fields \+ **Test connection** |
@@ -360,43 +352,32 @@ Shared templates under `webapp/templates/freemarker/` may be included from Wilma
 
 **i18n:** Add keys to `themes/wilma/i18n/` (and optionally `webapp/i18n/`) following existing VIVO property file conventions.
 
-## Metadata extraction and packaging
+## Uploads, metadata, and packaging
 
-This section **does not** assume any vendor-specific archive format.
+VIVO accepts two upload formats and does not assume a vendor-specific archive layout. Producing a METS package is out of scope; VIVO only accepts it as an upload format.
 
 ### Accepted uploads
 
-| Input | Validation | Metadata source (priority) |
+| Input | Validation | Deposited to IR as |
 | :---- | :---- | :---- |
-| **`application/pdf`** | Single PDF within size limit | 1\) XMP/`dc:` embedded metadata via PDF parser (e.g. Apache PDFBox). 2\) User edits in confirm step. |
-| **`application/zip`** | Must contain exactly one `*.pdf` (configurable pattern `swordDeposit.zipPdfPattern`) | 1\) Sidecar file (`metadata.json`, `dublin_core.xml`, or `meta.xml`). 2\) PDF XMP. 3\) User edits. |
+| **`application/pdf`** | Single PDF within size limit | Binary deposit — **no metadata, no packaging** |
+| **`application/zip`** | Valid ZIP within size limit; treated as a **METS package** and passed through unmodified (VIVO does not parse, validate, or repackage its contents) | Package deposit with **`Packaging`** set to the METS SIP profile URI (see **SWORD v2 package construction** below) |
 
-**Rejected:** ZIP without a PDF; multiple PDFs; disallowed MIME types; archives exceeding size limits.
+**Rejected:** disallowed MIME types; uploads exceeding size limits.
 
-### Sidecar formats (v0.1)
+### METS package (ZIP uploads)
 
-**`metadata.json`** — minimal schema:
+A ZIP upload is treated as a **METS-compliant Submission Information Package (SIP)** and deposited to the IR **as-is**. VIVO does **not** parse, validate, or repackage the archive, and this spec does **not** define how the METS document is authored — it only defines that a METS ZIP is an accepted upload format.
 
-```json
-{
-  "title": "Example Article",
-  "authors": ["Family, Given", "Other, Author"],
-  "date": "2024-06-01",
-  "doi": "10.1000/xyz",
-  "abstract": "…",
-  "type": "Article"
-}
-```
-
-**`dublin_core.xml`** — simple Dublin Core XML (`dc:title`, `dc:creator`, etc.) without vendor-specific wrappers.
-
-**Not in v0.1:** Full-text PDF parsing for older PDFs without XMP (Gap G-13). Document as follow-on if stakeholders require it.
+- On deposit, the SWORD client sets the **`Packaging`** value to the METS SIP profile URI (see **SWORD v2 package construction** below).  
+- Reference profile: [DSpace METS SIP Profile](https://wiki.lyrasis.org/spaces/DSDOC10x/pages/446399329/DSpaceMETSSIPProfile). The feature is designed to be IR-agnostic, but DSpace is the reference/target IR in practice.  
+- Producing a valid METS package is the responsibility of the depositor or an upstream tool and is out of scope here.
 
 ### Mapping to VIVO RDF (high level)
 
-Reuse Create-and-Link predicate constants where possible:
+In v0.1 the researcher enters/confirms this metadata in the deposit wizard for the VIVO profile record; VIVO does not extract metadata from the uploaded PDF or METS ZIP. Reuse Create-and-Link predicate constants where possible:
 
-| Extracted field | VIVO / BIBO target |
+| Field | VIVO / BIBO target |
 | :---- | :---- |
 | Title | `rdfs:label`, `bibo:title` |
 | Authors | `bibo:authorList` → `foaf:Person` / `vivo:Authorship` nodes |
@@ -410,12 +391,34 @@ The full mapping table remains **G-01** for metadata specialists; v0.1 implement
 
 ## SWORD v2 package construction
 
-Controlled by `swordDeposit.packageType`:
+The deposit package is determined by the **upload type** (not by configuration):
 
-| Mode | When to use | JavaClient2.0 usage |
-| :---- | :---- | :---- |
-| **`binary`** | IR collection accepts `application/pdf` only | `Deposit` with `InputStream` PDF, `mimeType=application/pdf`, optional `slug`, `md5` digest |
-| **`multipart`** | IR expects Atom entry \+ file | Build `EntryPart` with Dublin Core Atom elements from `ExtractedPublicationMetadata`, `linkEntryAndMediaParts()`, `client.deposit(...)` |
+| Upload | JavaClient2.0 usage |
+| :---- | :---- |
+| **PDF** | `Deposit` with the PDF `InputStream`, `mimeType = application/pdf`, optional `slug` and `md5` digest. **No metadata and no packaging** are sent. |
+| **METS ZIP** | `Deposit` with the ZIP `InputStream`, `mimeType = application/zip`, and **`setPackaging(...)`** set to the METS SIP profile URI. The archive is sent unmodified. |
+
+Sample fork (mirrors the JavaClient2.0 [METS deposit test](https://github.com/swordapp/JavaClient2.0/blob/0ecebabe136b19948b2108bb1ee8b05e99bff075/src/test/java/org/swordapp/client/test/METSDepositTests.java#L24)):
+
+```java
+// DSpace METS SIP packaging identifier, as used by the JavaClient2.0 METS test
+private static final String METS = "http://purl.org/net/sword/package/METSDSpaceSIP";
+
+Deposit deposit = new Deposit();
+deposit.setFile(parsed.getInputStream());
+deposit.setFilename(parsed.getFilename());
+deposit.setMd5(parsed.getMd5());               // optional Content-MD5
+
+if (parsed.isPdf()) {
+    deposit.setMimeType("application/pdf");
+    // PDF path: no metadata, no packaging
+} else { // METS ZIP
+    deposit.setMimeType("application/zip");
+    deposit.setPackaging(METS);
+}
+```
+
+The `Packaging` URI signals to the IR that the ZIP is a METS SIP. The feature targets any SWORD-compliant IR, but DSpace is the reference implementation, so the DSpace METS SIP identifier (`http://purl.org/net/sword/package/METSDSpaceSIP`, per the [DSpace METS SIP Profile](https://wiki.lyrasis.org/spaces/DSDOC10x/pages/446399329/DSpaceMETSSIPProfile)) is used by default.
 
 Collection **`accept`** and **`acceptPackaging`** from the Service Document drive validation before POST (JavaClient2.0 already warns on mismatch).
 
@@ -481,14 +484,14 @@ If the IR returns **`In-Progress: true`**:
 | When | The researcher navigates to their Individual page and selects “Edit Individual” |
 | And | The researcher selects the (new) button “Claim publications by: **SWORD Deposit**” |
 | Then | A pop up appears to upload a file. |
-| When | The researcher selects a PDF or DSpace SAF from their computer and clicks upload. |
-| Then | A deposit wizard appears, pre-populated with metadata for the VIVO record. |
+| When | The researcher selects a PDF or a METS-compliant ZIP from their computer and clicks upload. |
+| Then | A deposit wizard appears for the researcher to enter or confirm the metadata for the VIVO record. |
 
 ### BS03: Researcher deposits to a SWORD v2 server
 
 | Step | Description |
 | :---- | :---- |
-| Given | A researcher is logged into VIVO and has selected a valid PDF or DSpace SAF file to deposit. |
+| Given | A researcher is logged into VIVO and has selected a valid PDF or METS-compliant ZIP to deposit. |
 |  | SWORD deposit is configured and enabled for the VIVO instance. |
 |  | No IR record exists yet for the publication being added. |
 |  | The IR supports RDF data retrieval. |
@@ -527,10 +530,10 @@ Duplicate deposit (Gap G-03): if profile already has a publication with the same
 | G-07 | Retrieving a record and URI via SWORD without depositing | We are planning to add this during the Revision phase, after the basic architecture and data flows are approved  | Consultant team |
 | G-08 | Core vs extension module | Options: VIVO `api` package vs separate Vitro extension JAR Default recommendation: **VIVO `api` package** (matches Create-and-Link) | Consultant team |
 | G-09 | In-progress UX | Options: Block profile link until complete vs stub record Default recommendation: **Stub with status note**; link when IR URI known | Consultant team |
-| G-10 | Package default | Options: Binary PDF vs multipart Atom+PDF Default recommendation: **Probe collection `accept`** at deposit time; prefer binary when allowed | Consultant team |
+| G-10 | Package by upload type | **Resolved:** packaging is determined by upload type — a PDF is deposited as binary with no packaging; a METS ZIP is deposited with `Packaging` set to the METS SIP profile URI. | Consultant team |
 | G-11 | Endpoint config store | Options: JSON file vs RDF in configuration graph Default recommendation: **JSON file** in v0.1 for simplicity | Consultant team |
 | G-12 | Auto protocol version | Options: Admin-only select vs ping-based Default recommendation: **Admin select `v2`** now; schema includes `auto` for later | Consultant team |
-| G-13 | Non-XMP PDFs | Options: Reject vs OCR/heuristic extraction Default recommendation: **Allow manual entry**; reject auto-only extraction | Consultant team |
+| G-13 | PDF metadata | **Resolved:** PDFs are deposited without metadata and VIVO does not extract metadata from the upload; the researcher enters the VIVO profile-record metadata in the wizard. Automated extraction is deferred. | Consultant team |
 | G-14 | Multiple IR endpoints | Options: Single vs pick-list in wizard Default recommendation: **Support multiple** enabled endpoints (see  BS01) | Consultant team |
 
 ## Suggested epics
@@ -541,7 +544,7 @@ Parallelizable units of work for a single delivery:
 | :---- | :---- | :---- |
 | **0 — Spike** | JavaClient2.0 dependency proof; manual Service Document \+ deposit against a test IR | `VIVO/api` |
 | **1 — Admin config** | Endpoint CRUD, Test connection, Site Admin link, permission | `VIVO/api`, `Vitro/api`, `Vitro/home` |
-| **2 — Upload \+ metadata** | Parser, XMP \+ sidecar extractors, Wilma upload/confirm UI | `VIVO/api`, `VIVO/webapp` |
+| **2 — Upload \+ metadata** | Parser (PDF vs METS ZIP classification), Wilma upload/confirm UI, researcher-entered metadata | `VIVO/api`, `VIVO/webapp` |
 | **3 — Deposit \+ RDF** | `SwordDepositService`, receipt handling, publication \+ IR link on profile | `VIVO/api` |
 | **4 — Hardening** | Error scenarios, duplicate detection, in-progress handling, audit log | `VIVO/api` |
 | **5 — SWORD v3** | `SwordV3ClientAdapter`, OAuth, admin auto-detect | `VIVO/api` (future) |
