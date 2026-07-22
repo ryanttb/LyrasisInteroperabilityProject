@@ -393,6 +393,20 @@ The publication already exists in VIVO, so **no publication metadata is entered 
 
 The triple shape follows Vitro's standard webpage model: publication `—obo:ARG_2000028→` webpage/contact node `—vcard:hasURL→` `vcard:URL`. The exact triples are written by reusing the `AddEditWebpageFormGenerator` machinery rather than hand-rolling RDF; confirming the precise mechanism and triple shape is Gap G-15.
 
+### Design rationale: why a Website (and not an identifier field)
+
+This is a deliberate choice, offered here as a starting point for review. A SWORD deposit returns a **location** (the item's landing page in the IR, e.g. a DSpace item / Handle URL), not an **identifier** in a governed scheme. VIVO models these differently, and `vcard:hasURL` (the "Website" relation) is its purpose-built home for "a URL related to this thing" — which is exactly what a deposit landing page is.
+
+The Identity-tab identifier fields (DOI, PubMed ID, etc.) are the wrong home because:
+
+- **Semantically false** — an IR URL is not a DOI; storing it as `bibo:doi` misrepresents the data and can pollute metadata exports/OAI harvesting.  
+- **Rendered through fixed resolvers** — those fields link out through scheme proxies (`doi.org/{value}`, PubMed, …) and the public "GET IT" button assumes a registered identifier, so a non-DOI value produces a **broken link** (confirmed in testing).  
+- **Type-dependent** — available identifier properties vary by publication class (Abstract, Academic Article, Case Study, Editorial…), which would force a fragile per-type mapping.
+
+By contrast, a Website is semantically correct, **available uniformly on any publication type**, consistent with VIVO's existing Create-and-Link pattern (which already attaches external URLs via `vcard:hasURL`), carries a human-readable label ("SWORD Deposit"), is non-destructive (a publication may hold several), and needs **no custom ontology term or link resolver** — it renders as a plain, clickable link out of the box.
+
+The one tradeoff is **prominence**: an identifier can surface as a bold "GET IT" full-text button, whereas a Website appears in the Websites list. If a first-class "full text available" affordance is later desired, the clean approach is a dedicated property plus theme-level rendering — treated as a possible revision-phase enhancement, not a reason to overload an identifier field. Likewise, if an IR mints a real DOI or Handle for the deposit, that genuine identifier belongs in the corresponding field; it is a different value from the landing URL, which remains a Website.
+
 ## SWORD v2 package construction
 
 The deposit package is determined by the **upload type** (not by configuration):
