@@ -171,6 +171,7 @@ CollectionSpace has **no OAI-PMH code today**. These patterns are the closest an
 | `IndexResource` | `services/index/.../IndexResource.java` | `POST /index/{indexid}` reindex hook |
 | `IndexDocumentModelHandler` | `services/index/.../` | Per-tenant NXQL for what gets indexed |
 | Tenant index bindings | `services/common/.../tenants/tenant-bindings-proto-unified.xml` | Declare new index id (e.g. `oai-harvest`) |
+| `Reindex` listener | `services/.../listener/Reindex.java` ([source](https://github.com/collectionspace/services/blob/main/3rdparty/nuxeo/nuxeo-platform-listener/reindex/src/main/java/org/collectionspace/services/listener/Reindex.java)) | **Pattern** for a new listener that, on object change, bumps `collectionspace_core:updatedAt` on related parent objects so they reappear in incremental harvests (see [Related-object changes](#related-object-changes-and-incremental-reharvest)) |
 
 ### Authorization
 
@@ -340,9 +341,19 @@ POST /cspace-services/oai/config/test     → optional Identify dry-run for admi
 | Field | Where | Rule |
 | :---- | :---- | :---- |
 | `publishTo` / `publishToList` | Collection object (and media, for media links) | Must include a **public** term (refName shortId all or cspacepub) \- the same state that publishes to the public browser. No OAI-specific term |
-| `collectionspace_core:updatedAt` / record audit | Nuxeo | Becomes OAI **datestamp** (UTC, seconds) |
+| `collectionspace_core:updatedAt` / record audit | Nuxeo | Becomes OAI **datestamp** (UTC, seconds). Must also be bumped on related records when a related object's publish/eligibility state changes (see below), so incremental `from`/`until` harvests pick them up |
 
 Bulk update: marking records public is the **existing publish-to-public workflow.** A bulk data update can set the public Publish To term. Because eligibility reuses the public state, this does not need to be an OAI-specific job.
+
+#### Related-object changes and incremental reharvest
+
+Harvesters discover changed records via the OAI **datestamp**, which is derived from `collectionspace_core:updatedAt`. That field is updated when the **object record itself** is edited. It is **not** updated when only a *related* object changes — for example when a related media record's public Publish To term is cleared (an image taken down). In that case the parent collection object still carries a `dc:relation` (or similar) to content that is no longer public, but its own `updatedAt` is unchanged, so a subsequent incremental harvest will **not** re-fetch it.
+
+This is a known limitation of the public browser today: un-publishing a related object does not refresh the parent. For OAI, the requirement is that the harvester must learn the parent needs reharvesting on the next run so the stale relation is no longer served.
+
+**Recommended approach (high level):** copy and adapt the existing Nuxeo [Reindex](https://github.com/collectionspace/services/blob/main/3rdparty/nuxeo/nuxeo-platform-listener/reindex/src/main/java/org/collectionspace/services/listener/Reindex.java) listener pattern. That listener, when an object changes, tells Elasticsearch to reindex related documents. A parallel listener should, when an object changes (including publish/unpublish), update `collectionspace_core:updatedAt` on all objects that **relate to it**. Those parents then carry a newer datestamp, appear in the next `from`/`until` window, and are remapped (or tombstoned) in the harvest index without the harvester needing special related-object logic.
+
+Exact relation traversal and listener wiring are left to implementation; the requirement is that **related-object publish-state changes propagate into parent datestamps**.
 
 ## Staff UI touchpoints (`cspace-ui.js`)
 
@@ -407,10 +418,10 @@ CollectionSpace has multiple removal paths.
 
 | Event | Proposed OAI behavior |
 | :---- | :---- |
-| Public Publish To term cleared (record no longer public) | Harvest index row updated; next List\* shows `status="deleted"` tombstone |
-| Soft delete | Tombstone with last known identifier |
-| Hard delete | Tombstone retained in harvest index with `deleted=true` (persistent policy); identifier may be CSID-based |
-| Incremental harvest | Harvester diffs ListIdentifiers; deleted headers signal removal in discovery layer |
+| Public Publish To term cleared (record no longer public) | Harvest index row updated; next List\* shows `status="deleted"` tombstone. Also bump `updatedAt` on **related parent** records so they reharvest without the stale relation (see [Related-object changes](#related-object-changes-and-incremental-reharvest)) |
+| Soft delete | Tombstone with last known identifier; same related-parent `updatedAt` bump as above |
+| Hard delete | Tombstone retained in harvest index with `deleted=true` (persistent policy); identifier may be CSID-based; same related-parent `updatedAt` bump as above |
+| Incremental harvest | Harvester diffs ListIdentifiers; deleted headers signal removal in discovery layer; parents with bumped datestamps return updated metadata |
 
 Reference: ArchivesSpace `OAIDeletion` / tombstone pass in [AS OAI repository](https://github.com/archivesspace/archivesspace/blob/master/backend/app/lib/oai/aspace_oai_repository.rb).
 
