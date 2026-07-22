@@ -66,7 +66,7 @@ The registry is designed to be useful to human researchers (browsing via a web i
 | :---- | :---- | :---- |
 | Public user | Filters by source/target system; opens a record; follows outbound links (BS01). | No account required for read access. |
 | Community contributor | Submits new integration scenario records and updates records they own. | Must have a valid account in the registry. [User-Submitted Record Approval](#heading=h.ww6pbi819f6l). See G-03 for questions about this role. Can make pull requests or submit issues. |
-| Registry Reviewer | Community member who reviews records after they are submitted.  | Must be comfortable with YAML. Can merge pull requests. |
+| Registry Reviewer | Community member who reviews and approves records after they are submitted.  | Must be comfortable with YAML. Can merge pull requests. |
 | Global Registry Administrator | Approves accounts, sets user permissions, manages vocabularies, flags records, and monitors system health. |  |
 | Machine client | Queries `GET /api/v1/scenarios` with filters (Phase II). |  |
 | Registry platform | Persists records, enforces schema, serves UI and API. |  |
@@ -295,10 +295,12 @@ Content-Type: application/json
 | documentation\_url | URL | Link to external documentation, wiki page, or technical write-up. |
 | related\_spec\_url | URL | Link to a formal technical specification (e.g., a LYRASIS Interoperability Project spec) that this implementation corresponds to. |
 | related\_scenario\_ids | UUID list | IDs of other registry records that this scenario builds on, extends, or is related to. |
+| source\_system\_profile | URL | Link to [IOI InfraFinder](https://infrafinder.investinopen.org/solutions/archivesspace), [COAR IRD](https://ird.coar-repositories.org/browser?lang=en), or other system profile. Implementation recommendation: Show links to these registries in the UI. |
+| target\_system\_profile | URL | Link to [IOI InfraFinder](https://infrafinder.investinopen.org/solutions/archivesspace), [COAR IRD](https://ird.coar-repositories.org/browser?lang=en), or other system profile. Implementation recommendation: Show links to these registries in the UI. |
 | min\_system\_versions | Free text (array) | Minimum version of source/target systems tested (e.g., 'ArchivesSpace 3.4, DSpace 7.3'). |
 | def\_system\_version | Controlled List (multi-select) | Main version of source/target systems tested |
 | last\_verified\_date | Date | Date the implementer last confirmed the integration was still operational. |
-| contact\_email | Email | Optional contact for follow-up questions. Viewable on the public record. Data input form should explain this. |
+| github_id | URL | Optional contact for follow-up questions. |
 | license | SPDX identifier | License under which the configuration notes and linked code are shared (e.g., CC-BY-4.0, MIT, Apache-2.0). |
 | tags | Text list (free) | Free-text keywords for discovery (e.g., 'digitization workflow', 'born digital', 'finding aid', 'researcher profile'). |
 | updated\_date | Date | System-generated timestamp of the most recent edit to the record. |

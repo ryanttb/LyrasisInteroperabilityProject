@@ -8,7 +8,6 @@ related:
   - specs/C1-cs-oai-pmh.md
   - proposal/cs-meeting-notes.md
 last_synced: 2026-06-23
-version: 0.3-draft
 ---
 
 # C1: OAI-PMH Provider for CollectionSpace - High-Level Feature Design
@@ -17,7 +16,7 @@ version: 0.3-draft
 
 **Scenario:** [C1: Enabling discovery of a CollectionSpace object in an OAI-PMH enabled discovery repository](https://github.com/lyrasisorghome/InteroperabilityProject/issues/46)
 
-**Status:** Draft v0.1:  high-level feature design; closes *where-in-the-codebase* gaps in [`C1-cs-oai-pmh.md`](C1-cs-oai-pmh.md)
+**Status:** Draft v0.3:  high-level feature design; closes *where-in-the-codebase* gaps in [`C1-cs-oai-pmh.md`](C1-cs-oai-pmh.md)
 
 **Systems:** CollectionSpace 8.x (Java services layer, Nuxeo, Elasticsearch), OAI-PMH 2.0 harvesters (external)
 
