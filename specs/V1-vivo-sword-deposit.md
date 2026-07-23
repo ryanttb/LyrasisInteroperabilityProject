@@ -91,7 +91,7 @@ SWORD (Simple Web-service Offering Repository Deposit) is a standard protocol su
 | Actor | Role |
 | :---- | :---- |
 | VIVO Administrator | Registers one or more IR SWORD endpoints, credentials, default collection, protocol version (v2), and master enable flag via Site Admin. |
-| Researcher / Faculty (VIVO User) | On an existing publication page they can edit (self-editing), clicks **Add SWORD Deposit**, selects a single PDF or METS-compliant ZIP, and submits. (Optionally selects the target collection when more than one is enabled.) |
+| Researcher / Faculty (VIVO User) | On an existing publication page they can edit (self-editing), clicks **Add SWORD Deposit**, chooses a configured SWORD endpoint by **Endpoint Name**, chooses a **collection** for that endpoint, selects a single PDF or METS-compliant ZIP, and submits. |
 | SWORD-enabled Repository Manager | Configures SWORD permissions and collections on the IR (outside VIVO). |
 | Profile visitor (end user) | Follows the publication's **web link** on the public profile to the IR item (no deposit UI). |
 | SWORD deposit module (system agent) | Validates upload; for PDF deposits, maps publication fields to Dublin Core; calls SWORD client; adds the resulting Website to the publication; logs outcome. |
@@ -108,7 +108,7 @@ Assume host `https://vivo.example.edu` and an existing publication individual `h
 | :---- | :---- | :---- |
 | Individual page (public) | `/display/{localName}` | Existing Vitro routing; deposit starts here on a **publication** page |
 | Add Website (manual precedent) | `/editRequestDispatch?subjectUri={pubUri}&predicateUri=obo:ARG_2000028&editForm=…AddEditWebpageFormGenerator&fauxContextUri=…webpageInfoContext&rangeUri=vcard:URL` | Built-in Vitro form for adding a webpage; VIVO replicates its result programmatically (full URIs in [Integration Architecture](#integration-architecture)) |
-| **Proposed deposit entry** | `/swordDeposit/upload?subjectUri={publicationUri}` | GET → single-file dialog; POST → deposit \+ add Website |
+| **Proposed deposit entry** | `/swordDeposit/upload?subjectUri={publicationUri}` | GET → deposit dialog/panel (endpoint \+ collection \+ file); POST → deposit \+ add Website |
 | **Proposed admin** | `/admin/sword` | CRUD for endpoint configuration |
 | Site Admin hub | `/siteAdmin` | Existing; new link under Site Configuration |
 
@@ -226,10 +226,14 @@ public class SwordDepositController extends FreemarkerHttpServlet {
     public static final AuthorizationRequest REQUIRED_ACTIONS =
         SimplePermission.EDIT_OWN_ACCOUNT.ACTION;
 
-    // GET  /swordDeposit/upload?subjectUri={publicationUri}   → single-file dialog (PDF or ZIP)
-    // POST /swordDeposit/deposit                              → parse multipart, classify PDF vs ZIP,
-    //                                                           run SwordDepositService.deposit(...),
-    //                                                           then add Website to the publication
+    // GET  /swordDeposit/upload?subjectUri={publicationUri}
+    //      → deposit dialog/panel: endpoint select (configService.getEnabledEndpoints(...))
+    //        + collection select (from that endpoint's Service Document; pre-select
+    //          defaultCollectionHref when set) + single file input (PDF or ZIP) + OK
+    // POST /swordDeposit/deposit
+    //      → parse multipart (endpointId + collectionHref + file), classify PDF vs ZIP,
+    //        run SwordDepositService.deposit(...), then add Website using the
+    //        selected endpoint's websiteLinkText
 }
 ```
 
@@ -256,10 +260,12 @@ public class SwordV2ClientAdapter implements SwordProtocolAdapter {
 
 ```java
 public SwordDepositResult deposit(VitroRequest vreq, UploadPackage pkg,
-                                  String collectionHref, String publicationUri) {
+                                  String endpointId, String collectionHref,
+                                  String publicationUri) {
     UploadPackage parsed = uploadPackageParser.parse(pkg);          // validate MIME, classify PDF vs ZIP
 
-    SwordEndpointConfig endpoint = configService.getEnabledEndpoint(...);
+    // Researcher picked an enabled endpoint + collection in the deposit form.
+    SwordEndpointConfig endpoint = configService.getEnabledEndpoint(endpointId);
     SWORDCollection collection = adapter.resolveCollection(endpoint, collectionHref);
 
     // Fork on upload type: PDF → file + DC from the publication; ZIP → METS package (pass-through).
@@ -268,8 +274,10 @@ public SwordDepositResult deposit(VitroRequest vreq, UploadPackage pkg,
     SwordDepositResult result = adapter.deposit(collection, swordDeposit, endpoint);
 
     // Link the deposit back to the existing publication as a Website (vcard webpage).
+    // Webpage Name comes from the selected endpoint's Website Link Text.
     if (result.hasItemUri()) {   // success, or pending with an item URI already assigned
-        webpageWriter.addWebsite(publicationUri, result.getItemUri(), "SWORD Deposit");
+        webpageWriter.addWebsite(publicationUri, result.getItemUri(),
+                                 endpoint.getWebsiteLinkText());
     }
     auditLog.record(vreq, endpoint, collectionHref, result);
     parsed.dispose();  // delete temp files
@@ -317,19 +325,27 @@ Global feature flags and limits. Not editable in the Site Admin UI.
 
 ### Tier 2 — VIVO administrator (Site Admin UI)
 
-Stored in **`sword-endpoints.json`** (v0.1) as an array of endpoint records. Editable at **Site Admin → Site Configuration → SWORD Configuration** (`/admin/sword`).
+Stored in **`sword-endpoints.json`** (v0.1) as an **array of endpoint records** — admins may configure **one or more** SWORD endpoints. Editable at **Site Admin → Site Configuration → SWORD Configuration** (`/admin/sword`).
+
+Each `SwordEndpointConfig` record must make at least these fields configurable in the admin UI (other fields below remain supported):
+
+| Admin label | Field | Type | Required | Description |
+| :---- | :---- | :---- | :---- | :---- |
+| **Endpoint Name** | `displayName` | string | Yes | Label shown in the researcher's deposit form endpoint `<select>` |
+| **Endpoint Service Document URL** | `serviceDocumentUrl` | URL | Yes | SWORD v2 Service Document URL |
+| **Username** | `username` | string | Cond. | Basic auth user |
+| **Password** | `password` | secret | Cond. | Encrypted at rest (see D-02) |
+| **Website Link Text** | `websiteLinkText` | string | Yes | **Webpage Name** written on the publication after a successful deposit to this endpoint (e.g. `Institutional Repository`, `SWORD Deposit`) |
+
+Additional per-endpoint fields:
 
 | Field | Type | Required | Description |
 | :---- | :---- | :---- | :---- |
-| `id` | UUID | Yes | Stable key |
-| `displayName` | string | Yes | Label shown in the deposit UI (endpoint/collection picker) |
-| `enabled` | boolean | Yes | Per-endpoint enable |
-| `serviceDocumentUrl` | URL | Yes | SWORD v2 Service Document URL |
+| `id` | UUID | Yes | Stable key (value of the deposit form `<select>` option) |
+| `enabled` | boolean | Yes | Per-endpoint enable; only enabled endpoints appear in `configService.getEnabledEndpoints(...)` |
 | `protocolVersion` | enum | Yes | `v2` (default), `v3` (disabled until implemented), `auto` (future: probe endpoint) |
 | `authType` | enum | Yes | `basic` (v0.1 only) |
-| `username` | string | Cond. | Basic auth user |
-| `password` | secret | Cond. | Encrypted at rest (see D-02) |
-| `defaultCollectionHref` | URL | No | Pre-selected collection IRI/href from service document |
+| `defaultCollectionHref` | URL | No | Collection IRI/href from the Service Document; **pre-selected** in the researcher's deposit-form collection `<select>` when set (researcher may still choose another collection for that endpoint) |
 | `defaultLicenseUri` | URI | No | Passed in Atom metadata if IR requires (out of scope: validating that the license is accepted in the IR) |
 | `slugPrefix` | string | No | Optional SWORD Slug prefix |
 | `inProgressByDefault` | boolean | No | SWORD `In-Progress` header default |
@@ -353,11 +369,11 @@ Stored in **`sword-endpoints.json`** (v0.1) as an array of endpoint records. Edi
 
 | Location | Change |
 | :---- | :---- |
-| **Publication individual page** (Wilma template; exact file per Gap G-15) | When signed in and able to edit the publication, show an **Add SWORD Deposit** button in the **Websites** section (below Websites, above the metadata tabs). Opens `/swordDeposit/upload?subjectUri={pubUri}`. |
-| **`swordDepositUpload.ftl`** (new) | Single-select file input (`accept=".pdf,.zip"`), short help text describing the two accepted formats: a PDF (VIVO publication fields sent as Dublin Core with the deposit) or a METS-compliant ZIP (metadata inside the package). Optional IR endpoint/collection picker only when more than one is enabled; submit. |
-| **`swordDepositResult.ftl`** (new) | Success → the new **Website** on the publication \+ link to the IR item; failure → actionable error (Error workflow is gap G-06) |
-| **`admin/swordEndpointList.ftl`** (new) | List/add/edit/delete endpoints |
-| **`admin/swordEndpointEdit.ftl`** (new) | Form for Tier 2 fields \+ **Test connection** |
+| **Publication individual page** (Wilma template; exact file per Gap G-15) | When signed in and able to edit the publication, show an **Add SWORD Deposit** button in the **Websites** section (below Websites, above the metadata tabs). Opens the deposit dialog/panel (GET `/swordDeposit/upload?subjectUri={pubUri}`). |
+| **`swordDepositUpload.ftl`** (new) | Deposit **dialog or panel** (not an immediate OS file picker). Form fields: (1) **endpoint `<select>`** listing enabled endpoints by **Endpoint Name** (`displayName`), from `configService.getEnabledEndpoints(...)`; (2) **collection `<select>`** listing collections from the selected endpoint's Service Document (same source as admin **Test connection**), pre-selecting `defaultCollectionHref` when set (or the sole collection when only one exists); (3) single-select **file** input (`accept=".pdf,.zip"`) with short help for PDF vs METS ZIP; (4) **OK** button that POSTs to `/swordDeposit/deposit` with `endpointId` \+ `collectionHref` \+ file. Changing the endpoint refreshes the collection list. If only one endpoint is enabled, pre-select it. |
+| **`swordDepositResult.ftl`** (new) | Success → the new **Website** on the publication (label \= selected endpoint's **Website Link Text**) \+ link to the IR item; failure → actionable error (Error workflow is gap G-06) |
+| **`admin/swordEndpointList.ftl`** (new) | List/add/edit/delete **multiple** endpoint records |
+| **`admin/swordEndpointEdit.ftl`** (new) | Form for Tier 2 fields (including Endpoint Name, Service Document URL, Username, Password, Website Link Text) \+ **Test connection** |
 
 Shared templates under `webapp/templates/freemarker/` may be included from Wilma if other themes later opt in; v0.1 only ships Wilma overrides.
 
@@ -415,7 +431,9 @@ The publication already exists in VIVO, so **no publication metadata is entered*
 | :---- | :---- | :---- |
 | URL Type | `URL` | webpage type on the `vcard:URL` node |
 | URL | `{IR item URI from the deposit receipt}` | `vcard:url` |
-| Webpage Name | `SWORD Deposit` | link label (`rdfs:label`) on the `vcard:URL` node |
+| Webpage Name | `{selected endpoint's websiteLinkText}` | link label (`rdfs:label`) on the `vcard:URL` node |
+
+The **Webpage Name** is taken from the **Website Link Text** of the SWORD endpoint the researcher selected in the deposit form (not a hard-coded `"SWORD Deposit"` string). That lets each configured IR present a distinct label on the publication (e.g. `Campus IR`, `Disciplinary Repository`).
 
 The triple shape follows Vitro's standard webpage model: publication `—obo:ARG_2000028→` webpage/contact node `—vcard:hasURL→` `vcard:URL`. The exact triples are written by reusing the `AddEditWebpageFormGenerator` machinery rather than hand-rolling RDF; confirming the precise mechanism and triple shape is Gap G-15.
 
@@ -429,7 +447,7 @@ The Identity-tab identifier fields (DOI, PubMed ID, etc.) are the wrong home bec
 - **Rendered through fixed resolvers** — those fields link out through scheme proxies (`doi.org/{value}`, PubMed, …) and the public "GET IT" button assumes a registered identifier, so a non-DOI value produces a **broken link** (confirmed in testing).  
 - **Type-dependent** — available identifier properties vary by publication class (Abstract, Academic Article, Case Study, Editorial…), which would force a fragile per-type mapping.
 
-By contrast, a Website is semantically correct, **available uniformly on any publication type**, consistent with VIVO's existing Create-and-Link pattern (which already attaches external URLs via `vcard:hasURL`), carries a human-readable label ("SWORD Deposit"), is non-destructive (a publication may hold several), and needs **no custom ontology term or link resolver** — it renders as a plain, clickable link out of the box.
+By contrast, a Website is semantically correct, **available uniformly on any publication type**, consistent with VIVO's existing Create-and-Link pattern (which already attaches external URLs via `vcard:hasURL`), carries a human-readable label (the endpoint's **Website Link Text**), is non-destructive (a publication may hold several — useful when multiple IR endpoints are configured), and needs **no custom ontology term or link resolver** — it renders as a plain, clickable link out of the box.
 
 The one tradeoff is **prominence**: an identifier can surface as a bold "GET IT" full-text button, whereas a Website appears in the Websites list. If a first-class "full text available" affordance is later desired, the clean approach is a dedicated property plus theme-level rendering — treated as a possible revision-phase enhancement, not a reason to overload an identifier field. Likewise, if an IR mints a real DOI or Handle for the deposit, that genuine identifier belongs in the corresponding field; it is a different value from the landing URL, which remains a Website.
 
@@ -513,11 +531,12 @@ Updated happy-path sequence (the diagram above predates this flow and will be re
 
 1. Signed-in user opens an existing **publication** page they can edit.  
 2. In the **Websites** section they click **Add SWORD Deposit**.  
-3. They choose a single file — a PDF or a METS-compliant ZIP — and submit.  
-4. VIVO deposits the file to the configured IR collection via SWORD v2 (PDF → file \+ Dublin Core from the publication; ZIP → METS packaging, unmodified).  
-5. The IR returns a receipt/status document containing the new IR item URI.  
-6. VIVO adds a **Website** to the publication: `{ URL Type: URL, URL: <IR item URI>, Webpage Name: "SWORD Deposit" }`.  
-7. The user sees a success (or “deposit submitted, pending IR review”) message linking to the new Website and the IR item.
+3. A deposit dialog/panel opens with: an endpoint `<select>` (enabled endpoints by **Endpoint Name** from `configService.getEnabledEndpoints(...)`), a collection `<select>` (from that endpoint's Service Document; pre-select `defaultCollectionHref` when set), a file input, and **OK**.  
+4. They choose an endpoint and collection, choose a single file — a PDF or a METS-compliant ZIP — and click **OK**.  
+5. VIVO deposits the file to the selected collection via SWORD v2 (PDF → file \+ Dublin Core from the publication; ZIP → METS packaging, unmodified).  
+6. The IR returns a receipt/status document containing the new IR item URI.  
+7. VIVO adds a **Website** to the publication: `{ URL Type: URL, URL: <IR item URI>, Webpage Name: <selected endpoint's Website Link Text> }`.  
+8. The user sees a success (or “deposit submitted, pending IR review”) message linking to the new Website and the IR item.
 
 # **Behavior Scenarios** {#behavior-scenarios}
 
@@ -595,7 +614,7 @@ Duplicate deposit (Gap G-03): if the publication already has a **Website** point
 | G-11 | Endpoint config store | Options: JSON file vs RDF in configuration graph Default recommendation: **JSON file** in v0.1 for simplicity | Consultant team |
 | G-12 | Auto protocol version | Options: Admin-only select vs ping-based Default recommendation: **Admin select `v2`** now; schema includes `auto` for later | Consultant team |
 | G-13 | PDF metadata | **Resolved (revised):** for PDF deposits, VIVO reads a hard-coded minimal set of fields from the **existing publication** and sends them as Dublin Core via `EntryPart.addDublinCore(...)`. Metadata is **not** extracted from the uploaded file. Admin-configurable mapping is out of scope for this revision; METS is the advanced/custom path. | Consultant team |
-| G-14 | Multiple IR endpoints | Options: Single vs pick-list in the upload dialog Default recommendation: **Support multiple** enabled endpoints (see  BS01) | Consultant team |
+| G-14 | Multiple IR endpoints | **Resolved:** admins configure **one or more** `SwordEndpointConfig` records (Endpoint Name, Service Document URL, Username, Password, Website Link Text, …). The deposit dialog presents an endpoint `<select>` (`getEnabledEndpoints(...)`) and a collection `<select>` (Service Document for the chosen endpoint; pre-select `defaultCollectionHref` when set); post-deposit **Webpage Name** uses the selected endpoint's **Website Link Text**. | Consultant team |
 | G-15 | VIVO webpage-linking specifics (SME) | Confirm with a VIVO SME: (a) the exact Wilma template that renders the **publication** individual page and where to inject the **Add SWORD Deposit** control (below Websites, above the metadata tabs), and (b) the precise `vcard:URL` triple shape and whether to add the Website by driving `AddEditWebpageFormGenerator` programmatically vs writing triples via `RDFService`. Anchors captured from a live instance: predicate `obo:ARG_2000028`, faux context `webpageInfoContext`, domain `IAO_0000030`, range `vcard:URL`. | Consultant team / VIVO SME |
 
 ## Suggested epics
@@ -606,7 +625,7 @@ Parallelizable units of work for a single delivery:
 | :---- | :---- | :---- |
 | **0 — Spike** | JavaClient2.0 dependency proof; manual Service Document \+ deposit against a test IR | `VIVO/api` |
 | **1 — Admin config** | Endpoint CRUD, Test connection, Site Admin link, permission | `VIVO/api`, `Vitro/api`, `Vitro/home` |
-| **2 — Upload UI** | Parser (PDF vs METS ZIP classification), Wilma publication-page **Add SWORD Deposit** button \+ single-file dialog | `VIVO/api`, `VIVO/webapp` |
+| **2 — Upload UI** | Parser (PDF vs METS ZIP classification), Wilma publication-page **Add SWORD Deposit** button \+ deposit dialog (endpoint \+ collection \+ file \+ OK) | `VIVO/api`, `VIVO/webapp` |
 | **3 — Deposit \+ linking** | `SwordDepositService`, PDF VIVO → DC mapping (`PublicationDcMapper`), receipt handling, add **Website** to the publication (`PublicationWebpageWriter`) | `VIVO/api` |
 | **4 — Hardening** | Error scenarios, duplicate detection, in-progress handling, audit log | `VIVO/api` |
 | **5 — SWORD v3** | `SwordV3ClientAdapter`, OAuth, admin auto-detect | `VIVO/api` (future) |
