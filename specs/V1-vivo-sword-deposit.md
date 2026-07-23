@@ -41,7 +41,7 @@ Systems: VIVO / any SWORD-enabled IR
 
 # **Purpose and Scope** {#purpose-and-scope}
 
-This specification defines **how VIVO would implement** a workflow in which a signed-in researcher, viewing one of their existing **publication** pages, starts a deposit by choosing a single file — either a **PDF** (no accompanying metadata) or a **METS-compliant ZIP** (for example, a PDF plus a METS-formatted XML file) — which VIVO deposits to a configured IR via **SWORD v2**, and then, on a successful (or pending) deposit, **adds a Website (a vcard webpage) to that publication** whose URL is the IR item URI returned by the deposit. Because the publication already exists in VIVO, no publication record is created and no publication metadata is entered as part of the deposit. SWORD v2 is the primary protocol in scope. There are currently no known implementations of SWORD v3, but the spec notes where SWORD v3 configuration would differ from v2, should any v3 servers be built in the future.
+This specification defines **how VIVO would implement** a workflow in which a signed-in researcher, viewing one of their existing **publication** pages, starts a deposit by choosing a single file — either a **PDF** or a **METS-compliant ZIP** (for example, a PDF plus a METS-formatted XML file) — which VIVO deposits to a configured IR via **SWORD v2**, and then, on a successful (or pending) deposit, **adds a Website (a vcard webpage) to that publication** whose URL is the IR item URI returned by the deposit. Because the publication already exists in VIVO, no publication record is created and no publication metadata is *entered* as part of the deposit. For **PDF** deposits, VIVO reads a **small hard-coded set of fields** from the publication (e.g. `bibo:title`) and sends them with the deposit as Dublin Core via JavaClient2.0 `EntryPart.addDublinCore(...)`. For **METS ZIP** deposits, the archive is passed through unmodified (its metadata is already inside the package). Admin-configurable field mapping is out of scope for this revision; METS is the path for advanced / custom metadata packaging. SWORD v2 is the primary protocol in scope. There are currently no known implementations of SWORD v3, but the spec notes where SWORD v3 configuration would differ from v2, should any v3 servers be built in the future.
 
 With this feature, users will achieve two steps of their RDM/RIM workflow at once: deposit publications and display linked references to them on their VIVO profile. While the feature should be designed to integrate with any SWORD repository, we will use DSpace as a proof of concept integration and basis for defining required functionality.
 
@@ -52,7 +52,8 @@ This draft covers:
 3. **New components** (proposed packages, class names, responsibilities)  
 4. **Configuration and persistence** — admin UI, endpoint records, credentials, protocol version selection  
 5. **Reference UI touchpoints** — Wilma theme publication page and admin screens only (custom themes out of scope for this deliverable)  
-6. **SWORD packaging for PDF and METS ZIP uploads** — concrete v2 behavior   
+6. **SWORD packaging for PDF and METS ZIP uploads** — concrete v2 behavior, including the hard-coded VIVO → Dublin Core mapping for PDF deposits   
+
 7. **High-level request/data flows** with pseudocode sketches  
 8. **SWORD v3 forward compatibility** — adapter hook only; no v3 client in v0.1  
 9. **Open decisions** 
@@ -60,15 +61,16 @@ This draft covers:
 Out of scope for v0.1 (defer to a lower-level design pass or client feedback):
 
 1. Authoring the METS package itself — the spec accepts a METS-compliant ZIP as an upload format but does not define how the METS document is produced (see the [DSpace METS SIP Profile](https://wiki.lyrasis.org/spaces/DSDOC10x/pages/446399329/DSpaceMETSSIPProfile) for the reference profile)  
-2. Line-by-line BIBO ↔ IR metadata field mapping for every deployment ontology profile  
-3. IR-side ingest workflow configuration (embargo, review queues, collection policies)  
-4. Retrospective migration of existing IR items into VIVO  
-5. Automated extraction of metadata from uploaded files (PDF text/OCR parsing or reading the METS document)  
-6. SWORD v3 implementation (no production v3 servers identified yet)  
-7. Changes to non-reference themes (`nemo`, `tenderfoot`, etc.)  
-8. Retrieving URL and metadata from a SWORD repository then updating VIVO profile without depositing (will be addressed in revision phase)  
-9. Using SWORD to deposit an SAF to DSpace (open question: Is this a significant user need?)  
-10. Validating that the selected content license matches allowed licenses for each individual IR
+2. Admin-configurable or per-site VIVO → IR field-mapping UI (date conversion, multi-value flattening, subfield promotion, etc.) — v0.1 ships a **hard-coded minimal** VIVO → Dublin Core subset for PDF deposits only; METS covers advanced/custom packaging  
+3. Full line-by-line BIBO ↔ IR metadata field mapping for every deployment ontology profile  
+4. IR-side ingest workflow configuration (embargo, review queues, collection policies)  
+5. Retrospective migration of existing IR items into VIVO  
+6. Automated extraction of metadata from uploaded files (PDF text/OCR parsing or reading the METS document) — metadata for PDF deposits is read from the **existing VIVO publication**, not from the file  
+7. SWORD v3 implementation (no production v3 servers identified yet)  
+8. Changes to non-reference themes (`nemo`, `tenderfoot`, etc.)  
+9. Retrieving URL and metadata from a SWORD repository then updating VIVO profile without depositing (will be addressed in revision phase)  
+10. Using SWORD to deposit an SAF to DSpace (open question: Is this a significant user need?)  
+11. Validating that the selected content license matches allowed licenses for each individual IR
 
 This spec describes integration with **any SWORD-compliant IR** via standard protocol endpoints. It does not name or assume a particular repository product unless required by the protocol itself.
 
@@ -92,7 +94,7 @@ SWORD (Simple Web-service Offering Repository Deposit) is a standard protocol su
 | Researcher / Faculty (VIVO User) | On an existing publication page they can edit (self-editing), clicks **Add SWORD Deposit**, selects a single PDF or METS-compliant ZIP, and submits. (Optionally selects the target collection when more than one is enabled.) |
 | SWORD-enabled Repository Manager | Configures SWORD permissions and collections on the IR (outside VIVO). |
 | Profile visitor (end user) | Follows the publication's **web link** on the public profile to the IR item (no deposit UI). |
-| SWORD deposit module (system agent) | Validates upload, calls SWORD client, adds the resulting Website to the publication, logs outcome. |
+| SWORD deposit module (system agent) | Validates upload; for PDF deposits, maps publication fields to Dublin Core; calls SWORD client; adds the resulting Website to the publication; logs outcome. |
 
 # **System Overview** {#system-overview}
 
@@ -192,6 +194,7 @@ VIVO/api/src/main/java/org/vivoweb/webapp/sword/
     SwordDepositService.java             # orchestration: deposit → add Website to publication
     SwordEndpointConfigService.java      # load/save/test endpoint configs
     PublicationWebpageWriter.java        # add a vcard Website (webpage) to the existing publication
+    PublicationDcMapper.java             # hard-coded VIVO publication → Dublin Core for PDF deposits
     SwordDepositAuditLog.java            # timestamp, user, collection, IR URI
   upload/
     UploadPackage.java                   # PDF or METS ZIP wrapper (stream, filename, md5)
@@ -201,7 +204,7 @@ VIVO/api/src/main/java/org/vivoweb/webapp/sword/
     SwordV2ClientAdapter.java            # wraps org.swordapp.client.SWORDClient
     SwordV3ClientAdapter.java            # stub / NotImplemented in v0.1
     SwordAdapterFactory.java             # select by configured version (+ future auto-detect)
-    SwordPackageBuilder.java             # build org.swordapp.client.Deposit; PDF → binary (no packaging), ZIP → setPackaging(METS)
+    SwordPackageBuilder.java             # build Deposit; PDF → file + EntryPart DC from publication, ZIP → setPackaging(METS)
     SwordDepositResult.java              # IR item URI, status IRI, in-progress flag
   model/
     SwordEndpointConfig.java             # endpoint DTO
@@ -259,8 +262,8 @@ public SwordDepositResult deposit(VitroRequest vreq, UploadPackage pkg,
     SwordEndpointConfig endpoint = configService.getEnabledEndpoint(...);
     SWORDCollection collection = adapter.resolveCollection(endpoint, collectionHref);
 
-    // Fork on upload type: PDF deposits without metadata; ZIP is sent as a METS package.
-    Deposit swordDeposit = packageBuilder.build(parsed, endpoint);
+    // Fork on upload type: PDF → file + DC from the publication; ZIP → METS package (pass-through).
+    Deposit swordDeposit = packageBuilder.build(parsed, publicationUri, endpoint);
 
     SwordDepositResult result = adapter.deposit(collection, swordDeposit, endpoint);
 
@@ -351,7 +354,7 @@ Stored in **`sword-endpoints.json`** (v0.1) as an array of endpoint records. Edi
 | Location | Change |
 | :---- | :---- |
 | **Publication individual page** (Wilma template; exact file per Gap G-15) | When signed in and able to edit the publication, show an **Add SWORD Deposit** button in the **Websites** section (below Websites, above the metadata tabs). Opens `/swordDeposit/upload?subjectUri={pubUri}`. |
-| **`swordDepositUpload.ftl`** (new) | Single-select file input (`accept=".pdf,.zip"`), short help text describing the two accepted formats: a single PDF (no metadata) or a METS-compliant ZIP. Optional IR endpoint/collection picker only when more than one is enabled; submit. |
+| **`swordDepositUpload.ftl`** (new) | Single-select file input (`accept=".pdf,.zip"`), short help text describing the two accepted formats: a PDF (VIVO publication fields sent as Dublin Core with the deposit) or a METS-compliant ZIP (metadata inside the package). Optional IR endpoint/collection picker only when more than one is enabled; submit. |
 | **`swordDepositResult.ftl`** (new) | Success → the new **Website** on the publication \+ link to the IR item; failure → actionable error (Error workflow is gap G-06) |
 | **`admin/swordEndpointList.ftl`** (new) | List/add/edit/delete endpoints |
 | **`admin/swordEndpointEdit.ftl`** (new) | Form for Tier 2 fields \+ **Test connection** |
@@ -362,16 +365,38 @@ Shared templates under `webapp/templates/freemarker/` may be included from Wilma
 
 ## Uploads, metadata, and packaging
 
-VIVO accepts two upload formats and does not assume a vendor-specific archive layout. Producing a METS package is out of scope; VIVO only accepts it as an upload format.
+VIVO accepts two upload formats and does not assume a vendor-specific archive layout. Producing a METS package is out of scope; VIVO only accepts it as an upload format. Metadata for PDF deposits is read from the **existing VIVO publication**; metadata for METS ZIP deposits stays inside the package.
 
 ### Accepted uploads
 
 | Input | Validation | Deposited to IR as |
 | :---- | :---- | :---- |
-| **`application/pdf`** | Single PDF within size limit | Binary deposit — **no metadata, no packaging** |
-| **`application/zip`** | Valid ZIP within size limit; treated as a **METS package** and passed through unmodified (VIVO does not parse, validate, or repackage its contents) | Package deposit with **`Packaging`** set to the METS SIP profile URI (see **SWORD v2 package construction** below) |
+| **`application/pdf`** | Single PDF within size limit | File \+ Atom `EntryPart` with Dublin Core from the publication (hard-coded VIVO → DC mapping); **no packaging** |
+| **`application/zip`** | Valid ZIP within size limit; treated as a **METS package** and passed through unmodified (VIVO does not parse, validate, or repackage its contents) | Package deposit with **`Packaging`** set to the METS SIP profile URI (see **SWORD v2 package construction** below). VIVO does **not** inject publication fields into the ZIP |
 
 **Rejected:** disallowed MIME types; uploads exceeding size limits.
+
+### VIVO → Dublin Core mapping (PDF deposits only)
+
+For PDF deposits, VIVO reads a **small hard-coded set** of properties from the selected publication individual and attaches them to the SWORD deposit as Dublin Core terms via JavaClient2.0 `EntryPart.addDublinCore(...)`. This mapping is **not** exposed in the Site Admin UI in this revision (date conversion, multi-value flattening, subfield promotion, and per-site overrides are left to implementation / later work). Sites that need packaging or metadata beyond this subset should use a **METS-compliant ZIP**.
+
+Initial mapping (direction: **from VIVO to DC for deposit**):
+
+| VIVO / BIBO source | Dublin Core (deposit) | Notes |
+| :---- | :---- | :---- |
+| `bibo:title` (fallback `rdfs:label`) | `dc:title` | Primary sample field; see package-construction sketch below |
+| `bibo:authorList` → `foaf:Person` / `vivo:Authorship` nodes | `dc:creator` | **Implementation note:** flatten person labels to one or more `dc:creator` values when present; exact traversal left to implementers |
+| `bibo:date` (Vitro date precision) | `dc:date` | **Implementation note:** convert VIVO date precision to a DC-appropriate string |
+| `bibo:doi` | `dc:identifier` | Prefer a DOI URI or bare DOI string as the IR expects |
+| `bibo:abstract` | `dc:description` |  |
+| `rdf:type` (`bibo:Article`, `bibo:Book`, …) | `dc:type` | Map to a simple type label when useful |
+
+**Implementation notes (not in the sample code):**
+
+- Omit a DC element when the VIVO source value is absent rather than sending an empty element.  
+- Multi-valued VIVO fields (e.g. authors) may yield repeated `addDublinCore` calls; do not invent an Admin UI to configure this in v0.1.
+
+A fuller IR-specific mapping remains Gap **G-01**; v0.1 implements this **minimal DC subset** for PDF deposits only.
 
 ### METS package (ZIP uploads)
 
@@ -379,11 +404,12 @@ A ZIP upload is treated as a **METS-compliant Submission Information Package (SI
 
 - On deposit, the SWORD client sets the **`Packaging`** value to the METS SIP profile URI (see **SWORD v2 package construction** below).  
 - Reference profile: [DSpace METS SIP Profile](https://wiki.lyrasis.org/spaces/DSDOC10x/pages/446399329/DSpaceMETSSIPProfile). The feature is designed to be IR-agnostic, but DSpace is the reference/target IR in practice.  
-- Producing a valid METS package is the responsibility of the depositor or an upstream tool and is out of scope here.
+- Producing a valid METS package is the responsibility of the depositor or an upstream tool and is out of scope here.  
+- **Advanced / custom metadata:** use METS when the hard-coded PDF VIVO → DC mapping is insufficient; do not expect an Admin mapping UI in this revision.
 
 ### Post-deposit linking (add a Website to the publication)
 
-The publication already exists in VIVO, so **no publication metadata is entered or mapped** as part of the deposit. On a successful (or pending-with-URI) deposit, VIVO adds a **Website (vcard webpage)** to the existing publication using Vitro's webpage-editing machinery (see [Add-a-Website (webpage) editing](#add-a-website-webpage-editing--primary-precedent)). The example payload maps onto the built-in webpage form fields:
+The publication already exists in VIVO, so **no publication metadata is entered** as part of the deposit (PDF deposits *read* selected fields for the IR; they do not write new publication fields). On a successful (or pending-with-URI) deposit, VIVO adds a **Website (vcard webpage)** to the existing publication using Vitro's webpage-editing machinery (see [Add-a-Website (webpage) editing](#add-a-website-webpage-editing--primary-precedent)). The example payload maps onto the built-in webpage form fields:
 
 | Field (webpage form) | Value | vcard / VIVO target |
 | :---- | :---- | :---- |
@@ -409,14 +435,14 @@ The one tradeoff is **prominence**: an identifier can surface as a bold "GET IT"
 
 ## SWORD v2 package construction
 
-The deposit package is determined by the **upload type** (not by configuration):
+The deposit package is determined by the **upload type** (not by an Admin mapping UI):
 
 | Upload | JavaClient2.0 usage |
 | :---- | :---- |
-| **PDF** | `Deposit` with the PDF `InputStream`, `mimeType = application/pdf`, optional `slug` and `md5` digest. **No metadata and no packaging** are sent. |
-| **METS ZIP** | `Deposit` with the ZIP `InputStream`, `mimeType = application/zip`, and **`setPackaging(...)`** set to the METS SIP profile URI. The archive is sent unmodified. |
+| **PDF** | `Deposit` with the PDF `InputStream`, `mimeType = application/pdf`, optional `slug` and `md5` digest, plus an `EntryPart` populated with Dublin Core from the publication via `addDublinCore(...)`. **No packaging** URI. |
+| **METS ZIP** | `Deposit` with the ZIP `InputStream`, `mimeType = application/zip`, and **`setPackaging(...)`** set to the METS SIP profile URI. The archive is sent unmodified (no VIVO → DC injection). |
 
-Sample fork (mirrors the JavaClient2.0 [METS deposit test](https://github.com/swordapp/JavaClient2.0/blob/0ecebabe136b19948b2108bb1ee8b05e99bff075/src/test/java/org/swordapp/client/test/METSDepositTests.java#L24)):
+Sample fork (PDF path uses `EntryPart.addDublinCore` as in the JavaClient2.0 README; METS path mirrors the [METS deposit test](https://github.com/swordapp/JavaClient2.0/blob/0ecebabe136b19948b2108bb1ee8b05e99bff075/src/test/java/org/swordapp/client/test/METSDepositTests.java#L24)):
 
 ```java
 // DSpace METS SIP packaging identifier, as used by the JavaClient2.0 METS test
@@ -429,8 +455,15 @@ deposit.setMd5(parsed.getMd5());               // optional Content-MD5
 
 if (parsed.isPdf()) {
     deposit.setMimeType("application/pdf");
-    // PDF path: no metadata, no packaging
-} else { // METS ZIP
+    // PDF path: attach Dublin Core from the existing VIVO publication (hard-coded mapping).
+    // Sample shows title only; other fields from the VIVO → DC table follow the same pattern.
+    String title = publicationDcMapper.titleFrom(publicationUri); // bibo:title (fallback rdfs:label)
+    if (title != null && !title.isBlank()) {
+        EntryPart ep = new EntryPart();
+        ep.addDublinCore("title", title);
+        deposit.setEntryPart(ep);
+    }
+} else { // METS ZIP — advanced/custom packaging; metadata already in the archive
     deposit.setMimeType("application/zip");
     deposit.setPackaging(METS);
 }
@@ -481,7 +514,7 @@ Updated happy-path sequence (the diagram above predates this flow and will be re
 1. Signed-in user opens an existing **publication** page they can edit.  
 2. In the **Websites** section they click **Add SWORD Deposit**.  
 3. They choose a single file — a PDF or a METS-compliant ZIP — and submit.  
-4. VIVO deposits the file to the configured IR collection via SWORD v2 (PDF → binary, no metadata; ZIP → METS packaging).  
+4. VIVO deposits the file to the configured IR collection via SWORD v2 (PDF → file \+ Dublin Core from the publication; ZIP → METS packaging, unmodified).  
 5. The IR returns a receipt/status document containing the new IR item URI.  
 6. VIVO adds a **Website** to the publication: `{ URL Type: URL, URL: <IR item URI>, Webpage Name: "SWORD Deposit" }`.  
 7. The user sees a success (or “deposit submitted, pending IR review”) message linking to the new Website and the IR item.
@@ -550,7 +583,7 @@ Duplicate deposit (Gap G-03): if the publication already has a **Website** point
 
 | \# | Gap | Description | Owner |
 | :---- | :---- | :---- | :---- |
-| G-01 | Metadata mapping: VIVO ontology → SWORD/IR | A full field mapping from VIVO's publication ontology (BIBO, VIVO-ISF) to the target IR's required and recommended metadata fields is needed. Special cases: multiple authors (VIVO uses RDF nodes; IR may want a flat list), publication date format, DOI handling, and abstract encoding. **Recommendation: Out of scope** for spec phase. Address during the Implementation phase. | Metadata Specialist / Developer |
+| G-01 | Metadata mapping: VIVO ontology → SWORD/IR | A full field mapping from VIVO's publication ontology (BIBO, VIVO-ISF) to the target IR's required and recommended metadata fields is needed. Special cases: multiple authors (VIVO uses RDF nodes; IR may want a flat list), publication date format, DOI handling, and abstract encoding. **v0.1 recommendation:** ship a **hard-coded minimal VIVO → Dublin Core** subset for **PDF deposits only** (see [VIVO → Dublin Core mapping](#vivo--dublin-core-mapping-pdf-deposits-only)); omit Admin mapping UI; use **METS** for advanced/custom packaging. Broader / configurable mapping remains implementation or later revision. | Metadata Specialist / Developer |
 | G-02 | Write-back to IR | Options: Deposit only vs update IR with VIVO URI Default recommendation: **Deposit only** | Product Owner |
 | G-03 | Duplicate deposit detection | If the publication already has a **Website** pointing to an IR item, should the system warn before creating a new deposit? Options: warn only, block, or allow override**Recommendation:** if a Website to an IR item already exists (or a deposit for the same filename \+ date is detected), **warn** and allow override | Product Owner |
 | G-05 | SAF Deposit | Is supporting DSpace SAF a user need? | Product owner |
@@ -558,10 +591,10 @@ Duplicate deposit (Gap G-03): if the publication already has a **Website** point
 | G-07 | Retrieving a record and URI via SWORD without depositing | We are planning to add this during the Revision phase, after the basic architecture and data flows are approved  | Consultant team |
 | G-08 | Core vs extension module | Options: VIVO `api` package vs separate Vitro extension JAR Default recommendation: **VIVO `api` package** (matches Create-and-Link) | Consultant team |
 | G-09 | In-progress UX | For a pending deposit, when should the **Website** be added to the publication? Options: add immediately with a status note vs wait until complete Default recommendation: **Add the Website with a status note**; finalize when the IR item URI is known | Consultant team |
-| G-10 | Package by upload type | **Resolved:** packaging is determined by upload type — a PDF is deposited as binary with no packaging; a METS ZIP is deposited with `Packaging` set to the METS SIP profile URI. | Consultant team |
+| G-10 | Package by upload type | **Resolved:** packaging is determined by upload type — a PDF is deposited as file \+ Atom `EntryPart` Dublin Core (from the publication) with no packaging URI; a METS ZIP is deposited with `Packaging` set to the METS SIP profile URI. | Consultant team |
 | G-11 | Endpoint config store | Options: JSON file vs RDF in configuration graph Default recommendation: **JSON file** in v0.1 for simplicity | Consultant team |
 | G-12 | Auto protocol version | Options: Admin-only select vs ping-based Default recommendation: **Admin select `v2`** now; schema includes `auto` for later | Consultant team |
-| G-13 | PDF metadata | **Resolved:** PDFs are deposited without metadata and VIVO does not extract metadata from the upload. No publication metadata is entered during deposit because the deposit starts from an existing publication. Automated extraction is deferred. | Consultant team |
+| G-13 | PDF metadata | **Resolved (revised):** for PDF deposits, VIVO reads a hard-coded minimal set of fields from the **existing publication** and sends them as Dublin Core via `EntryPart.addDublinCore(...)`. Metadata is **not** extracted from the uploaded file. Admin-configurable mapping is out of scope for this revision; METS is the advanced/custom path. | Consultant team |
 | G-14 | Multiple IR endpoints | Options: Single vs pick-list in the upload dialog Default recommendation: **Support multiple** enabled endpoints (see  BS01) | Consultant team |
 | G-15 | VIVO webpage-linking specifics (SME) | Confirm with a VIVO SME: (a) the exact Wilma template that renders the **publication** individual page and where to inject the **Add SWORD Deposit** control (below Websites, above the metadata tabs), and (b) the precise `vcard:URL` triple shape and whether to add the Website by driving `AddEditWebpageFormGenerator` programmatically vs writing triples via `RDFService`. Anchors captured from a live instance: predicate `obo:ARG_2000028`, faux context `webpageInfoContext`, domain `IAO_0000030`, range `vcard:URL`. | Consultant team / VIVO SME |
 
@@ -574,6 +607,6 @@ Parallelizable units of work for a single delivery:
 | **0 — Spike** | JavaClient2.0 dependency proof; manual Service Document \+ deposit against a test IR | `VIVO/api` |
 | **1 — Admin config** | Endpoint CRUD, Test connection, Site Admin link, permission | `VIVO/api`, `Vitro/api`, `Vitro/home` |
 | **2 — Upload UI** | Parser (PDF vs METS ZIP classification), Wilma publication-page **Add SWORD Deposit** button \+ single-file dialog | `VIVO/api`, `VIVO/webapp` |
-| **3 — Deposit \+ linking** | `SwordDepositService`, receipt handling, add **Website** to the publication (`PublicationWebpageWriter`) | `VIVO/api` |
+| **3 — Deposit \+ linking** | `SwordDepositService`, PDF VIVO → DC mapping (`PublicationDcMapper`), receipt handling, add **Website** to the publication (`PublicationWebpageWriter`) | `VIVO/api` |
 | **4 — Hardening** | Error scenarios, duplicate detection, in-progress handling, audit log | `VIVO/api` |
 | **5 — SWORD v3** | `SwordV3ClientAdapter`, OAuth, admin auto-detect | `VIVO/api` (future) |
