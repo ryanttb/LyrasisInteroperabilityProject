@@ -474,6 +474,8 @@ Media links: include public thumbnail URL in `dc:relation` when `oai.includeMedi
 
 All of the following must be configurable by the CollectionSpace System Administrator. Some elements may be overridden by a CollectionSpace Administrator as indicated.  Anything that is available to the CollectionSpace Administrator role may be configurable through the UI.
 
+System Admin settings are instance/tenant configuration (not Staff UI); storage and runtime access are defined in [Configuration model — Tier 1](#configuration-model). Staff-UI-overridable settings follow Tier 2.
+
 | Function | Role Access | Notes |
 | :---- | :---- | :---- |
 | Feature Available | System Admin | Feature flag to enable the feature itself; The availability of feature must be able to be turned on or off at the system admin level.  |
