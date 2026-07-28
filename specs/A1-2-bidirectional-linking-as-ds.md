@@ -15,77 +15,57 @@ last_synced: 2026-07-27
 *Linking DSpace Digital Object records to ArchivesSpace finding aid components*
 
 Document Status: DRAFT  
-Version: 0.3  
-Date: May 2026  
+Version: 0.4  
+Date: July 2026  
 Source Stories: [A1](https://github.com/lyrasisorghome/InteroperabilityProject/issues/7) and [A2](https://github.com/lyrasisorghome/InteroperabilityProject/issues/44)  
 Project: LYRASIS Interoperability Project  
 Systems: ArchivesSpace SUI, ArchivesSpace PUI, DSpace REST API (7.x / DSpace 9.x contract), ArchivesSpace REST API
 
 # **Table of Contents** {#table-of-contents}
 
-[Table of Contents	1](#table-of-contents)
+[Table of Contents](#table-of-contents)
 
-[Purpose and Scope	2](#purpose-and-scope)
+[Purpose and Scope](#purpose-and-scope)
 
-[Background	2](#background)
+[Background](#background)
 
-[Normative references	3](#normative-references)
+[Normative references](#normative-references)
 
-[Stakeholders and Roles	3](#stakeholders-and-roles)
+[Stakeholders and Roles](#stakeholders-and-roles)
 
-[User Narratives	3](#user-narratives)
+[System Overview](#system-overview)
 
-[System Overview	4](#system-overview)
+[DSpace Linking UI](#dspace-linking-ui)
 
-[Metadata Mappings	4](#metadata-mappings)
+[Feature Modes](#feature-modes)
 
-[Feature Modes	5](#feature-modes)
+[Metadata Mappings](#metadata-mappings)
 
-[DSpace API Operations	5](#dspace-api-operations)
+[DSpace API Operations](#dspace-api-operations)
 
-[Bulk Linking Specifications	6](#bulk-linking-specifications)
+[Linking Specifications](#linking-specifications)
 
-[Actors	6](#actors)
+[End-to-end flows](#end-to-end-flows)
 
-[End-to-end flows	16](#end-to-end-flows)
+[Algorithms](#algorithms)
 
-[Algorithms	19](#algorithms)
+[Behavior Scenarios](#behavior-scenarios)
 
-[Example Walkthrough	20](#example-walkthrough)
+[Error Scenarios](#error-scenarios)
 
-[Result report (LinkBatch output)	20](#result-report-\(linkbatch-output\))
+[User Configuration Requirements](#user-configuration-requirements)
 
-[Behavior Scenarios	21](#behavior-scenarios)
+[User Interface Requirements](#user-interface-requirements)
 
-[Configuration	21](#configuration)
-
-[Single Item Linking	22](#single-item-linking)
-
-[Bulk/Collection Linking	26](#bulk/collection-linking)
-
-[Error Scenarios	29](#error-scenarios)
-
-[Error scenarios (API-level): Based on A2 Bulk Linking	29](#error-scenarios-\(api-level\):-based-on-a2-bulk-linking)
-
-[User Configuration Requirements	29](#user-configuration-requirements)
-
-[User Configuration Fields	29](#user-configuration-fields)
-
-[New SUI Screen: DSpace Integration Configuration	30](#new-sui-screen:-dspace-integration-configuration)
-
-[User Interface Requirements	31](#user-interface-requirements)
-
-[New SUI Screen: Digital Object Search Screen	31](#new-sui-screen:-digital-object-search-screen)
-
-[Existing SUI Screens:	32](#existing-sui-screens:)
-
-[Open Questions and Specification Gaps	33](#heading=)
+[Open Questions and Specification Gaps](#open-questions-and-specification-gaps)
 
 # **Purpose and Scope** {#purpose-and-scope}
 
-This specification defines the functional and behavioral requirements for an ArchivesSpace feature that enables staff users to search for one or more DSpace items and collection records and link them bidirectionally to one or more ArchivesSpace digital object records. 
+This specification defines the functional and behavioral requirements for an ArchivesSpace Staff UI (SUI) feature that enables staff users to search DSpace and associate selected DSpace items with ArchivesSpace archival objects under a host **Resource** or **Archival Object** record. Linking is bidirectional: ArchivesSpace receives a new Digital Object (with a clickable File Version), and the corresponding DSpace item receives an ArchivesSpace URI.
 
-Out of scope for this specification: changes to the DSpace data model, discovery layer integrations, batch import via spreadsheet, use of legacy/EOL APIs, or any administrative workflow not triggered from within the ArchivesSpace SUI.
+The feature lives as a new section under **Instances**, tentatively named **DSpace Linking**, and offers two complementary search/association modes that may be used together in one edit session. Persist happens when the staff user clicks the host record's native **Save Archival Object** / **Save Resource**; until then, selections are held only in the open form.
+
+Out of scope for this specification: changes to the DSpace data model, discovery layer integrations, batch import via spreadsheet, use of legacy/EOL APIs, standalone Digital Object edit screens, Digital Object Components, background-job orchestration of the link write (may be introduced later; see [jobs_example](https://github.com/archivesspace/archivesspace/tree/81f7c21b7c249f7d6438d3f2d9583aa501cb5762/plugins/jobs_example)), or any administrative workflow not triggered from within the ArchivesSpace SUI.
 
 # **Background** {#background}
 
@@ -97,7 +77,9 @@ Current workarounds are manual and error-prone:
 * Exporting links from DSpace, reformatting them to the ArchivesSpace Digital Object specification, and batch-importing via a spreadsheet importer.  
 * The reverse path – getting the ArchivesSpace URI into DSpace – has no defined current workflow.
 
-This feature replaces those workarounds with a search-and-select interface inside the ArchivesSpace SUI that calls the DSpace Search API and links the records, updating each with the corresponding link.  Organizations without a shared discovery layer are the primary beneficiaries, though the feature is useful for any institution maintaining both systems.
+This feature replaces those workarounds with a **DSpace Linking** section on the host Resource or Archival Object edit view. Staff search DSpace (typeahead per child, and/or collection-scoped search with drag-and-drop), maintain provisional links next to immediate child archival objects, then save the host record to create ArchivesSpace Digital Objects and write ArchivesSpace URIs back to DSpace. Organizations without a shared discovery layer are the primary beneficiaries, though the feature is useful for any institution maintaining both systems.
+
+UI and host-record patterns are aligned with lessons from A3–4 (SWORD deposit): host record = Resource or Archival Object; child list under Instances; Identifier + File Version required for a clickable PUI link.
 
 # **Normative references** {#normative-references}
 
@@ -111,49 +93,92 @@ This feature replaces those workarounds with a search-and-select interface insid
 
 ## User Narratives {#user-narratives}
 
-1. I created a finding aid in ArchivesSpace for a collection that has a small number of digital objects associated with it. I created 1-10 digital object placeholders where I knew we would want to insert links later. I deposited the digital content to DSpace already. Now I need to put the DSpace URI in ArchivesSpace, and add the ArchivesSpace URI to DSpace.  
-2. A patron requested digitization of one folder of a collection, and our digitization unit has completed digitization and deposited the content to DSpace. I need to create an ArchivesSpace digital object and link to it from DSpace.  
+1. I created a finding aid in ArchivesSpace for a collection that has a small number of archival objects associated with it. I deposited the digital content to DSpace already. Now I need to put the DSpace URI in ArchivesSpace, and add the ArchivesSpace URI to DSpace.  
+2. A patron requested digitization of one folder of a collection, and our digitization unit has completed digitization and deposited the content to DSpace. From a parent Resource or Archival Object, I need to link several child components to their DSpace items in one edit session.  
 3. I need to configure my ArchivesSpace repository to connect with a DSpace repository. My institution may host several DSpace and ArchivesSpace repositories.
 
 | Role | Responsibility in This Feature | Notes |
 | :---- | :---- | :---- |
 | ArchivesSpace Administrator | Configures the DSpace integration settings per repository. | Must also hold Collection Administrator level access in DSpace. |
-| ArchivesSpace Staff User | Searches for DSpace records and creates links from the SUI. | Uses both single-item and bulk linking modes. |
+| ArchivesSpace Staff User | Searches for DSpace items and maintains links from the host-record SUI. | Uses Mode A (typeahead) and/or Mode B (collection search + drag-and-drop). |
 | ArchivesSpace End User (PUI) | Views finding aid records with links to digital content. | Does not interact with the integration directly. |
 | DSpace Collection Administrator | Provides configuration details; owns records that receive ArchivesSpace URI links. |  |
 | DSpace service account | Makes authenticated DSpace API calls on behalf of any user. | See Gap G-02 |
 
 # **System Overview** {#system-overview}
 
-The integration operates as a plugin or extension within the ArchivesSpace Staff User Interface (SUI). It communicates outbound with a configured DSpace instance via the DSpace REST/Search API v7. Earlier versions of the DSpace REST API will not be supported via the plugin. No middleware or separate service is required; all orchestration occurs within the ArchivesSpace application layer. 
+The integration operates as a plugin or extension within the ArchivesSpace Staff User Interface (SUI). It communicates outbound with a configured DSpace instance via the DSpace REST/Search API v7 (DSpace 9.x RestContract). Earlier versions of the DSpace REST API will not be supported. No middleware or separate service is required; all orchestration occurs within the ArchivesSpace application layer.
+
+**Starting point — a Resource or an Archival Object (host record):** the feature is available only on the staff edit view of a **Resource** or an **Archival Object**. Both expose the same **Instances** group and sit on the same resource tree. The term **host record** means "the Resource or Archival Object currently being edited." For a **Resource**, immediate children are its **top-level Archival Objects**; for an **Archival Object**, immediate children are its **child Archival Objects**. The feature is **not** available on standalone Digital Object edit views, and Digital Object Components are out of scope.
 
 | Component | Role | Development Interface |
 | :---- | :---- | :---- |
-| ArchivesSpace SUI | Staff-facing interface; hosts search widget, file version instances, and configuration UI. | Browser / ArchivesSpace plugin framework |
-| ArchivesSpace PUI | Public-facing finding aid interface; displays links created by this feature. | ArchivesSpace indexing pipeline |
-| DSpace REST API | Used to execute queries in DSpace and update the DSpace record with link to the ArchivesSpace record | HTTPS / JSON (DSpace REST API) |
+| ArchivesSpace SUI | Staff-facing interface; hosts the **DSpace Linking** section under Instances, and the repository configuration UI. | Browser / ArchivesSpace plugin framework |
+| ArchivesSpace PUI | Public-facing finding aid interface; displays clickable File Version links created by this feature. | ArchivesSpace indexing pipeline |
+| DSpace REST API | Search (items/collections) and metadata PATCH to write the ArchivesSpace URI onto the DSpace item. | HTTPS / JSON (DSpace REST API) |
 
-## Metadata Mappings {#metadata-mappings}
+## DSpace Linking UI {#dspace-linking-ui}
 
-| ASpace Digital Object Field | DSpace Field | Repeatable? | Notes |
-| :---- | :---- | :---- | :---- |
-| Title | dc.title | No |  |
-| Identifier | DSpace PID per Configuration | No |  |
-| File URI | Per configuration | No |  |
-| VRA Core Level |  | No | See G-16 |
-| Digital Object Type |  | No | See G-16 |
-| Restrictions |  | No | See G-16 |
-| Languages | dc.language | Yes | See G-27 |
-| Per configuration | dc.identifier.uri | Yes |  |
+Under **Instances** on the host record, the plugin adds a section tentatively named **DSpace Linking**. The section contains two panels that work together; both Mode A and Mode B feed the same provisional link state.
+
+### Panel: New DSpace Links
+
+Lists every **immediate child archival object** of the host record. Each row shows the child title (or display string) and an input that can hold a provisional link to one DSpace item.
+
+* Inputs reuse or extend ArchivesSpace's existing token/search linker pattern (the component used when linking archival objects to digital objects internally): type-to-search, select a result, clear (X) a selection.
+* Leaving a row empty means that child is skipped on Save.
+* It is valid to save with **no** provisional links maintained; the plugin then does nothing.
+
+**Mode A — typeahead search (per child input):**
+
+1. The staff user types in any child input.
+2. After a short debounce pause, the plugin searches DSpace using the typed text as `query` (items; first page / top N results — see G-20).
+3. A dropdown lists matching DSpace items (title/handle highlights as available).
+4. Selecting a result maintains that DSpace item as the provisional link for that child; the dropdown closes. **Nothing is persisted yet.**
+
+Mockup (Mode A typeahead on New DSpace Links):
+
+![New DSpace Links panel mockup — typeahead for "Krispy"](images/A1-2-dspace-linking-new-links-mockup.png)
+
+### Panel: DSpace Search
+
+Supports **Mode B — collection-scoped search with drag-and-drop**:
+
+| Control | Required | Behavior |
+| :---- | :---- | :---- |
+| Collection | Yes | Select populated from `GET /api/discover/search/objects?dsoType=collection`. Chosen UUID becomes `scope` on item search. |
+| Query | Yes (for Search) | Free-text query string. |
+| Search | — | Runs `GET /api/discover/search/objects?dsoType=item&query={query}&scope={collectionUuid}` (plus paging params). |
+
+Results render in this panel. The staff user may **drag** an individual result onto a New DSpace Links input; that creates the same provisional link state as Mode A selection. Mode A and Mode B are **both available and not mutually exclusive** in one session.
+
+### Clearing and saving
+
+* **Clear:** X on a maintained link returns that input to empty.
+* **Save:** Clicking **Save Archival Object** / **Save Resource** on the host record begins the linking process for every child that still has a provisional DSpace link. Children without a selection are skipped.
 
 ## Feature Modes {#feature-modes}
 
-The integration has two operational modes, both sharing the same configuration and API authentication layer:
+Both modes share configuration, DSpace session bootstrap, and the same Save → LinkBatch path.
 
-| Mode | Trigger | Outcome |
-| :---- | :---- | :---- |
-| Single-Item Linking | User opens a Digital Object, Resource, or Archival Object record and uses the DSpace URI field or the Add Digital Object linker. | One DSpace item URI added to one ArchivesSpace Digital Object record. One ArchivesSpace URI written to DSpace. |
-| Bulk/Collection Linking | User opens a series or sub-series Archival Object record and selects Add Digital Collection under Instances. | A DSpace collection is matched to an ArchivesSpace component; multiple Digital Object records are created or updated. ArchivesSpace URIs written to DSpace. |
+| Mode | Where | How a link is chosen | Persist |
+| :---- | :---- | :---- | :---- |
+| **A — Typeahead** | New DSpace Links input next to a child AO | Debounced DSpace item search from typed text; select from dropdown | Host-record Save |
+| **B — Collection search + drag-and-drop** | DSpace Search panel → drop onto a New DSpace Links input | Required Collection (`scope`) + Query; drag result onto a child input | Host-record Save |
+
+## Metadata Mappings {#metadata-mappings}
+
+When Save creates a Digital Object for a linked child, the DSpace item's public URI is written to **both** required/link fields (same rule as A3–4):
+
+| ASpace Digital Object Field | DSpace source / value | Repeatable? | Notes |
+| :---- | :---- | :---- | :---- |
+| Title | `dc.title` (or child AO display string fallback) | No | Prefer DSpace title when present |
+| Identifier (`digital_object_id`) | Public DSpace item URI (e.g. `{baseUrl}/handle/{handle}`) | No | **Required** on create; canonical location |
+| File Version → File URI (`file_uri`) | **Same URI as Identifier** | No | Required so the PUI shows a clickable "view online" link (Identifier alone is plain text) |
+| Languages | `dc.language` | Yes | See G-27 |
+| *(DSpace side)* configured AS URI field (default `dc.identifier.uri`) | ArchivesSpace public URI of the new DO (or configured source) | Yes | Written via PATCH after AS create |
+
+Optional/extra Digital Object fields from DSpace metadata remain subject to G-16.
 
 ## DSpace API Operations {#dspace-api-operations}
 
@@ -168,10 +193,10 @@ See also:
 | CSRF token GET | /api/security/csrf  | Gets an initial CSRF Token for API usage for a specific session |
 | Log in POST | /api/authn/login | Login via a DSpace service user with JSON Web Token & refresh the CSRF token |
 | Log out POST | /api/authn/logout | Log out with DSpace service user |
-| Search POST | /api/discover/search | Search and retrieve items, collections, and communities. Filter search to specific collections or communities. |
+| Search GET | /api/discover/search/objects | Search items and collections. Mode A: `dsoType=item&query=…`. Mode B collections: `dsoType=collection`. Mode B items: `dsoType=item&query=…&scope={collectionUuid}`. |
 | Items PATCH | items/\<uuid\> (op: add, path:/metadata/dc.identifier/-/uri/-) | Use add operation to add DSpace links. See also G-09 |
 
-## Bulk Linking Specifications {#bulk-linking-specifications}
+## Linking Specifications {#linking-specifications}
 
 ## Actors {#actors}
 
@@ -198,18 +223,21 @@ Stored per AS repository (same model as A1):
 
 ### Data contracts
 
-#### **LinkMap (input to link phase)**
+#### **LinkMap (built on Save from provisional UI state)**
 
-The LinkMap is the handoff between **search/selection** (future UI) and **link execution**. A single entry covers A1; an array covers A2.
+The LinkMap is assembled when the host record is saved. Each row in New DSpace Links that still has a maintained DSpace selection becomes one entry. Empty rows are omitted. If the resulting `links` array is empty, the plugin performs **no** AS or DSpace writes.
+
+A single entry covers one child link (Mode A or Mode B); N entries cover a multi-child Save.
 
 ```json
 {
   "repository_id": 1,
+  "host_ref": "/repositories/1/archival_objects/10",
   "links": [
     {
-      "as_ref": "/repositories/1/digital_objects/1",
+      "as_ref": "/repositories/1/archival_objects/11",
       "dspace_item_href": "/api/core/items/9f3288b2-f2ad-454f-9f4c-70325646dcee",
-      "mode": "append_file_version",
+      "mode": "create_digital_object",
       "publish": false
     }
   ]
@@ -219,10 +247,11 @@ The LinkMap is the handoff between **search/selection** (future UI) and **link e
 | Field | Required | Description |
 | :---- | :---- | :---- |
 | `repository_id` | yes | AS repository numeric ID |
-| `links[].as_ref` | yes | AS URI of target record (`digital_objects`, `archival_objects`, or `resources`) |
-| `links[].dspace_item_href` | yes | DSpace item self link from search (or full item GET) |
-| `links[].mode` | yes | `append_file_version` | `create_digital_object` |
-| `links[].publish` | no | If true, call AS publish after successful link |
+| `host_ref` | yes | AS URI of the host Resource or Archival Object being saved |
+| `links[].as_ref` | yes | AS URI of the **child archival object** receiving the new Digital Object instance |
+| `links[].dspace_item_href` | yes | DSpace item self link from search |
+| `links[].mode` | yes | `create_digital_object` (primary path for this UI) |
+| `links[].publish` | no | If true, publish the new DO / instance after successful link |
 
 **1:1 rule:** Each `as_ref` and each `dspace_item_href` MUST appear at most once per LinkMap.
 
@@ -251,14 +280,14 @@ handle← _embedded.indexableObject.handle (if present)
 
 #### **Field mapping (DSpace item → AS digital object)**
 
-Applied when `mode = create_digital_object` or when refreshing metadata on update:
+Applied when `mode = create_digital_object` (the Save path for DSpace Linking):
 
 | AS field | DSpace source | Notes |
 | :---- | :---- | :---- |
-| `title` | `metadata.dc.title[0].value` | Required |
-| `digital_object_id` | `metadata.{configured_pid_field}[0].value` or `handle` | Institution-specific |
-| `file_versions[].file_uri` | `{baseUrl}/handle/{handle}` | Primary link |
-| `lang_materials[].language_and_script.language` | `metadata.dc.language[*].value` | Optional; map ISO codes |
+| `title` | `metadata.dc.title[0].value` | Fallback: child AO `display_string` |
+| `digital_object_id` | Public item URI (e.g. `{baseUrl}/handle/{handle}`) | **Required**; same value as `file_uri` |
+| `file_versions[].file_uri` | **Same public item URI as Identifier** | Required for clickable PUI link |
+| `lang_materials[].language_and_script.language` | `metadata.dc.language[*].value` | Optional; map ISO codes (G-27) |
 
 ### DSpace API operations
 
@@ -278,10 +307,10 @@ Applied when `mode = create_digital_object` or when refreshing metadata on updat
 
 | Parameter | Example | Purpose |
 | :---- | :---- | :---- |
-| `query` | `test` | Solr query string |
-| `dsoType` | `item` | `collection` | `all` | Limit result types |
-| `scope` | `{collectionUuid}` | Limit to community/collection |
-| `page`, `size` | `0`, `20` | Pagination |
+| `query` | `test` / typed Mode A text | Solr query string |
+| `dsoType` | `item` \| `collection` | Mode A/B item search uses `item`; Collection select uses `collection` |
+| `scope` | `{collectionUuid}` | **Required for Mode B** item search; optional elsewhere |
+| `page`, `size` | `0`, `20` | Pagination / top N (G-20) |
 
 #### **Example request:**
 
@@ -407,9 +436,9 @@ X-ArchivesSpace-Session: {session}
 Content-Type: application/json
 ```
 
-### **Link mode: `create_digital_object` (A2 bulk path)**
+### **Link mode: `create_digital_object` (primary Save path)**
 
-Used when AS has archival structure but no digital objects yet.  
+Used when Save creates a new Digital Object for a child archival object that has a provisional DSpace link.  
 ![][image4]
 
 #### **Create:**
@@ -419,32 +448,56 @@ POST /repositories/1/digital_objects
 X-ArchivesSpace-Session: {session}
 ```
 
-Body includes mapped `title`, `digital_object_id`, and initial `file_versions[0].file_uri` from DSpace.
+Body includes:
+
+* `title` from DSpace (or child AO display string)
+* `digital_object_id` = public DSpace item URI (**required**)
+* `file_versions[0].file_uri` = **the same URI** (so the PUI renders a clickable link)
+* then attach the new DO as a digital-object **instance** on `links[].as_ref` (the child archival object)
+
+> **Note:** `append_file_version` (updating an existing Digital Object) remains described above for API completeness / edge cases, but the DSpace Linking UI's default Save path is **create + link** on the child archival object — not editing a pre-existing Digital Object from a standalone DO screen.
 
 ## End-to-end flows {#end-to-end-flows}
 
-### Flow 1 — Single link (A1-compatible subset)
+### Flow 0 — Open host record (common)
 
 | Step | Action |
 | :---- | :---- |
-| 0 | Config present (A-01) |
-| 1 | Bootstrap DSpace session |
-| 2 | `GET /api/discover/search/objects?query=test&dsoType=item` |
-| 3 | Build LinkMap with one entry (user selection assumed) |
-| 4 | Execute **LinkEntry** algorithm (below) |
-| 5 | Return per-link result report |
+| 0 | Config present; Integration Enabled for the repository |
+| 1 | Staff opens a **Resource** or **Archival Object** (host record) in the SUI |
+| 2 | Under **Instances**, the **DSpace Linking** section lists immediate children in **New DSpace Links**; **DSpace Search** Collection select is populated via `dsoType=collection` |
+| 3 | Staff optionally uses Mode A and/or Mode B to maintain provisional links (nothing persisted yet) |
 
-### Flow 2 — Bulk link from DSpace collection (A2)
+### Flow 1 — Mode A typeahead (one or more children)
 
 | Step | Action |
 | :---- | :---- |
-| 1 | Search collection: `GET …/search/objects?query={title}&dsoType=collection` |
-| 2 | User selects collection → extract `collectionUuid` |
-| 3 | List member items: `GET …/search/objects?scope={collectionUuid}&dsoType=item&query=*&size=100` (paginate) |
-| 4 | User maps each item to an AS target → LinkMap with N entries |
-| 5 | Execute **LinkBatch** (sequential or parallel with rate limit) |
+| 1 | User types in a New DSpace Links input; after debounce, `GET …/search/objects?query={text}&dsoType=item&page=0&size=N` |
+| 2 | User selects a result → input holds provisional link; dropdown clears |
+| 3 | Repeat for other children as needed; clear with X if wrong |
+| 4 | User clicks **Save** on the host record |
+| 5 | Plugin builds LinkMap from non-empty rows → **LinkBatch** |
+| 6 | Per entry: create DO (Identifier = File URI = DSpace public URI), link to child AO, PATCH DSpace with AS URI |
+| 7 | Return / surface per-link result report |
+
+### Flow 2 — Mode B collection search + drag-and-drop
+
+| Step | Action |
+| :---- | :---- |
+| 1 | User chooses Collection (required) and Query; clicks Search |
+| 2 | `GET …/search/objects?scope={collectionUuid}&dsoType=item&query={query}` (paginate as needed) |
+| 3 | Results appear in DSpace Search; user drags a result onto a New DSpace Links input |
+| 4 | Same provisional link state as Mode A; may mix with Mode A selections |
+| 5 | Save → LinkMap → LinkBatch (same as Flow 1 steps 4–7) |
 
 ![][image5]
+
+### Flow 3 — Save with no provisional links
+
+| Step | Action |
+| :---- | :---- |
+| 1 | User saves the host record with every New DSpace Links input empty |
+| 2 | Plugin builds an empty LinkMap and **does nothing** (no AS DO creates, no DSpace PATCH) |
 
 ## Algorithms {#algorithms}
 
@@ -455,28 +508,24 @@ Body includes mapped `title`, `digital_object_id`, and initial `file_versions[0]
 INPUT:  link ∈ LinkMap.links
 OUTPUT: LinkResult { as_ref, dspace_item_uuid, status, errors[] }
 
-1. AS_RECORD ← GET(link.as_ref)
-2. DS_ITEM    ← GET(link.dspace_item_href)   // includes ETag
-3. DS_URI     ← buildItemPublicUri(DS_ITEM)
-4. AS_URI     ← buildAsPublicUri(AS_RECORD, config.as_uri_source)
-
-5. IF link.mode == "append_file_version":
-     AS_RECORD.file_versions.append(newFileVersion(DS_URI))
-     POST(link.as_ref, AS_RECORD)             // full body
-   ELSE IF link.mode == "create_digital_object":
-     NEW_DO ← mapDspaceToDigitalObject(DS_ITEM)
-     CREATED ← POST(/repositories/{repo}/digital_objects, NEW_DO)
-     optionally attach CREATED to archival_object.instances
-     AS_URI ← buildAsPublicUri(CREATED, …)
-
-6. PATCH(DS_ITEM, add dc.identifier.uri = AS_URI)
+1. CHILD_AO  ← GET(link.as_ref)                 // child archival object
+2. DS_ITEM   ← GET(link.dspace_item_href)       // includes ETag
+3. DS_URI    ← buildItemPublicUri(DS_ITEM)      // e.g. handle URL
+4. // Primary path: create_digital_object
+5. NEW_DO ← {
+     title: mapTitle(DS_ITEM, CHILD_AO),
+     digital_object_id: DS_URI,                 // required Identifier
+     file_versions: [ newFileVersion(DS_URI) ]  // same URI for PUI link
+   }
+6. CREATED ← POST(/repositories/{repo}/digital_objects, NEW_DO)
+7. Attach CREATED as digital-object instance on CHILD_AO (GET→merge→POST)
+8. AS_URI ← buildAsPublicUri(CREATED, config.as_uri_source)
+9. PATCH(DS_ITEM, add configured AS URI field = AS_URI)
    IF PATCH fails:
-     record error; optionally rollback AS change (policy TBD)
-
-7. IF link.publish:
-     POST({as_ref}/publish)
-
-8. RETURN LinkResult
+     record error; optionally rollback AS change (policy TBD — G-29)
+10. IF link.publish:
+     publish CREATED / instance as configured
+11. RETURN LinkResult
 
 ```
 
@@ -484,43 +533,47 @@ OUTPUT: LinkResult { as_ref, dspace_item_uuid, status, errors[] }
 
 ```
 
+IF linkMap.links is empty:
+  RETURN { total: 0, succeeded: 0, failed: 0, results: [] }  // no-op
+
 results ← []
 FOR EACH link IN linkMap.links:
   results.append(LinkEntry(link))
 RETURN { total, succeeded, failed, results }
 ```
 
-**Bulk semantics:** No special bulk endpoint required. `LinkBatch` with `len(links) == 1` is the single-link case.
+**Bulk semantics:** No special bulk endpoint is required for v0.4. `LinkBatch` with `len(links) == 1` is the single-link case. Background-job wrapping (ArchivesSpace `jobs_example` pattern) is deferred.
 
 ## Example Walkthrough {#example-walkthrough}
 
-**Given:** AS repository `1`, existing digital object `/repositories/1/digital_objects/1`, DSpace configured.
+**Given:** AS repository `1`, host archival object `/repositories/1/archival_objects/10` with child `/repositories/1/archival_objects/11` ("Doughnut Production Photos"), DSpace configured.
 
-**Search:**
+**Mode A search** (after typing "Krispy"):
 
 ```
-GET {dspace}/api/discover/search/objects?query=test&dsoType=item
+GET {dspace}/api/discover/search/objects?query=Krispy&dsoType=item&page=0&size=20
 ```
 
-**LinkMap** (after user selection):
+**LinkMap** (after selection and Save):
 
 ```
 {
   "repository_id": 1,
+  "host_ref": "/repositories/1/archival_objects/10",
   "links": [
     {
-      "as_ref": "/repositories/1/digital_objects/1",
+      "as_ref": "/repositories/1/archival_objects/11",
       "dspace_item_href": "/api/core/items/9f3288b2-f2ad-454f-9f4c-70325646dcee",
-      "mode": "append_file_version",
+      "mode": "create_digital_object",
       "publish": false
     }
   ]
 }
 ```
 
-**AS update:** `GET` DO 1 → append `file_uri` → `POST /repositories/1/digital_objects/1`
+**AS create:** `POST /repositories/1/digital_objects` with `digital_object_id` and `file_versions[0].file_uri` both set to `https://dspace.example.edu/handle/10673/4`, then attach as instance on AO 11.
 
-**DSpace update:** `PATCH /api/core/items/9f3288b2-f2ad-454f-9f4c-70325646dcee` with AS public URI.
+**DSpace update:** `PATCH /api/core/items/9f3288b2-f2ad-454f-9f4c-70325646dcee` with AS public URI of the new Digital Object.
 
 ## Result report (LinkBatch output) {#result-report-(linkbatch-output)}
 
@@ -531,14 +584,14 @@ GET {dspace}/api/discover/search/objects?query=test&dsoType=item
   "failed": 1,
   "results": [
     {
-      "as_ref": "/repositories/1/digital_objects/1",
+      "as_ref": "/repositories/1/archival_objects/11",
       "dspace_item_uuid": "9f3288b2-f2ad-454f-9f4c-70325646dcee",
       "status": "linked",
-      "as_uri_written": "https://as.example.edu/repositories/1/digital_objects/1",
+      "as_uri_written": "https://as.example.edu/repositories/1/digital_objects/55",
       "dspace_uri_written": "https://dspace.example.edu/handle/10673/4"
     },
     {
-      "as_ref": "/repositories/1/digital_objects/2",
+      "as_ref": "/repositories/1/archival_objects/12",
       "dspace_item_uuid": "ff7ec3a4-0aab-418b-94fc-d0e8189084db",
       "status": "failed",
       "errors": ["DSpace PATCH 403: insufficient permissions"]
@@ -560,253 +613,155 @@ GET {dspace}/api/discover/search/objects?query=test&dsoType=item
 | When | The administrator navigates to System \> Manage Repositories in the ArchivesSpace SUI. |
 |  | The administrator selects the repository to configure. |
 |  | The administrator opens the DSpace Integration Settings field group. |
-|  | The administrator enters the required configuration fields (see Section 5.2) and saves. |
+|  | The administrator enters the required configuration fields and saves. |
 | Then | The DSpace integration is active for the repository. |
-|  | DSpace URI fields and the Add Digital Collection button become active in the SUI for users of that repository. |
+|  | The **DSpace Linking** section under Instances becomes available on Resource and Archival Object edit views for that repository. |
 
-## Single Item Linking {#single-item-linking}
+## Host record and DSpace Linking section {#host-record-and-dspace-linking-section}
 
-### BS-02: User can search DSpace to add a Digital Object to an Archival Object; AND
-
-### BS-03: User can search DSpace to add a Digital Object to a Resource Record
+### BS-02: User opens DSpace Linking on a Resource or Archival Object
 
 | Step | Description |
 | :---- | :---- |
-| Given | An Archival Object exists in ArchivesSpace (no linked Digital Object). |
-|  | DSpace integration is configured and enabled. |
-| When | The user opens the Resource or Archival Object record in the SUI. |
-|  | The user navigates to Instances and selects Add DSpace Digital Object. |
-| Then | The DSpace Digital Object Search popup appears |
-|  | The Title field is pre-populated with the Resource or Archival Object Record Title |
-|  | The URI field is pre-populated with the Resource or Archival Object Record URI |
-|  | The keywords field is empty |
-|  | All search fields are editable |
+| Given | DSpace integration is configured and enabled. |
+|  | A Resource or Archival Object (host record) has one or more immediate child Archival Objects. |
+| When | The user opens the host record in the SUI and navigates to **Instances**. |
+| Then | A **DSpace Linking** section is visible. |
+|  | **New DSpace Links** lists each immediate child with an empty link input. |
+|  | **DSpace Search** shows Collection (required), Query, and Search. |
+|  | Collection options are loaded from DSpace (`dsoType=collection`). |
 
-### BS-04: User can search Dspace to add a new File Version for an existing Digital Object
+### BS-03: Save with no provisional links is a no-op
 
 | Step | Description |
 | :---- | :---- |
-| Given | A Resource or Archival Object record exists in ArchivesSpace with a linked Digital Object |
-|  | DSpace integration is configured and enabled. |
-| When | The user opens the Digital Object record in the SUI. |
-|  | The user expands the File Versions field group and selects Add DSpace Digital Object |
-| Then | The Browse Digital Objects Search popup appears |
-| When | The user filters results to DSpace Digital Object |
-|  | The user filters the text search to keywords in the title |
-|  | The user searches title keywords |
-| Then | The user finds and selects the corresponding DSpace record |
+| Given | The user is editing a host record with DSpace Linking visible. |
+|  | No New DSpace Links inputs have a maintained selection. |
+| When | The user clicks Save Archival Object / Save Resource. |
+| Then | The plugin does not create Digital Objects and does not PATCH DSpace. |
 
-### BS-05: User executes first search of DSpace in an ArchivesSpace session
+## Mode A — Typeahead linking {#mode-a-—-typeahead-linking}
+
+### BS-04: User typeahead-searches DSpace from a child input
 
 | Step | Description |
 | :---- | :---- |
-| Given | An item record exists in DSpace. |
-|  | DSpace integration is configured and enabled. |
-|  | The user has arrived at the DSpace Digital Object search screen |
-|  | The search form is populated with all fields populated |
-|  | The user has not yet performed a DSpace search in this session |
-| When | The user clicks Search |
-| Then | The DSpace CSRF api endpoint is called to create a CSRF token |
-|  | The DSpace login api is called to login the session |
-|  | A recurring Refresh job is initiated to refresh the CSRF token at an interval less than the expires claim returned in the login response  |
+| Given | DSpace Linking is open on a host record. |
+|  | A DSpace session can be bootstrapped (CSRF + login) on first search in the session. |
+| When | The user types text into a New DSpace Links input and pauses (debounce). |
+| Then | The plugin calls DSpace search with `dsoType=item` and `query` = the typed text (first page / top N). |
+|  | A dropdown lists matching results (reuse/extend the AS digital-object linker pattern). |
+|  | No AS or DSpace records are written yet. |
 
-### BS-06: User searches for an existing digital object in DSpace using all Fields
+### BS-05: User selects a typeahead result
 
 | Step | Description |
 | :---- | :---- |
-| Given | An item record exists in DSpace. |
-|  | DSpace integration is configured and enabled. |
-|  | The DSpace CSRF token is created and the session is active |
-|  | The user has arrived at the DSpace Digital Object search screen |
-|  | The search form is populated with all fields populated |
-| When | The user clicks Search |
-| Then | The DSpace Search API is called with the appropriate parameters |
+| Given | Mode A search results are visible for a child input. |
+| When | The user selects a result. |
+| Then | That DSpace item is maintained as the provisional link for that child. |
+|  | The results dropdown is removed. |
+|  | No AS or DSpace records are written yet. |
 
-### BS-07: User searches for an existing digital object in DSpace using a subset of fields
+### BS-06: User clears a provisional link
 
 | Step | Description |
 | :---- | :---- |
-| Given | An item record exists in DSpace. |
-|  | DSpace integration is configured and enabled. |
-|  | The DSpace CSRF token is created and the session is active |
-|  | The user has arrived at the DSpace Digital Object search screen |
-|  | The search form is populated with at least one field populated and one field blank |
-| When | The user clicks Search |
-| Then | The DSpace Search API is called with the appropriate parameters |
+| Given | A New DSpace Links input holds a maintained DSpace selection. |
+| When | The user clicks X (clear) on that selection. |
+| Then | The input returns to empty (placeholder ready for Mode A or Mode B). |
 
-### BS-08: User searches for an existing digital object in DSpace and receives a single result
+## Mode B — Collection search and drag-and-drop {#mode-b-—-collection-search-and-drag-and-drop}
+
+### BS-07: User searches DSpace within a required Collection
 
 | Step | Description |
 | :---- | :---- |
-| Given | An item record exists in DSpace. |
-|  | DSpace integration is configured and enabled. |
-|  | The DSpace CSRF token is created and the session is active |
-|  | The user has arrived at the DSpace Digital Object search screen |
-|  | The search form is populated with field values that will product a single result |
-| When | The user clicks Search |
-| Then | The DSpace Search API is called  with the appropriate parameters |
-|  | A single result is displayed with the fields defined in the configuration |
-|  | A Save Button is displayed |
-|  | A Publish Button is displayed |
+| Given | DSpace Linking is open; Collection options are loaded. |
+| When | The user selects a Collection, enters a Query, and clicks Search. |
+| Then | The plugin calls `GET /api/discover/search/objects` with `dsoType=item`, `query={query}`, and `scope={collectionUuid}`. |
+|  | Matching items are displayed in the DSpace Search panel. |
+|  | Search without a Collection is blocked (Collection required). |
 
-### BS-09: User searches for an existing digital object in DSpace and receives multiple possible results of DSpace objects and/or collections
+### BS-08: User drag-and-drops a search result onto a child input
 
 | Step | Description |
 | :---- | :---- |
-| Given | An item record exists in DSpace. |
-|  | DSpace integration is configured and enabled. |
-|  | The DSpace CSRF token is created and the session is active |
-|  | The search form is populated with field values that will product multiple results |
-| When | The user clicks Search |
-| Then | The DSpace Search API is called with the appropriate parameters |
-|  | A list of results is displayed with the fields defined in the configuration |
-|  | A Save button appears next to each result |
-|  | A Publish button appears next to each result |
+| Given | Mode B results are visible in DSpace Search. |
+| When | The user drags an individual result onto a New DSpace Links input. |
+| Then | That input maintains the same provisional link type as Mode A selection. |
+|  | Mode A and Mode B selections may coexist across different children in one session. |
+|  | No AS or DSpace records are written yet. |
 
-### BS-10: User Saves a single Digital Object link as a new File Version
+## Save and bidirectional link {#save-and-bidirectional-link}
+
+### BS-09: User saves and creates Digital Objects for maintained links
 
 | Step | Description |
 | :---- | :---- |
-| Given | The user has executed a successful search for a Digital Object in DSpace from Digital Object \> File Version |
-| When | The user clicks Link on the search interface |
-| Then | A file version is added to the Digital Object |
-|  | The DSpace URI for the selected item is added to File Versions \> File URI in the pre-existing digital object record in ArchivesSpace |
-|  | The DSpace API PATCH method is called to append the ArchivesSpace Archival Object URI to the record in DSpace |
+| Given | One or more New DSpace Links inputs hold provisional DSpace selections. |
+| When | The user clicks Save Archival Object / Save Resource. |
+| Then | For each maintained link, ArchivesSpace creates a Digital Object associated with that child Archival Object. |
+|  | Each new Digital Object has **Identifier** (`digital_object_id`) set to the DSpace public item URI. |
+|  | Each new Digital Object has a **File Version** whose **File URI** is the **same** URI (clickable on the PUI). |
+|  | Title is taken from DSpace when available (else child display string). |
+|  | The DSpace item is PATCHed to add the ArchivesSpace URI (configured field; default `dc.identifier.uri`). |
+|  | Children without a selection are skipped. |
+|  | A per-link result report reflects success and failure (fail-forward for partial batches — G-29). |
 
-### BS-11: User Saves a single Digital Object link as a new Digital Object using DSpace Metadata source
-
-| Step | Description |
-| :---- | :---- |
-| Given | The user has executed a successful search for a Digital Object in DSpace from Instances \> Create Digital Object |
-|  | DSpace is configured as the Metadata source for new Digital Objects |
-| When | The user clicks Link from the search interface |
-| Then | An ArchivesSpace digital object is created using metadata from the DSpace object |
-|  | The DSpace URI for the selected item is added to the newly created digital object record in ArchivesSpace |
-|  | The DSpace API PATCH method is called to append the ArchivesSpace Digital Object URI to the DSpace Item |
-|  | The ArchivesSpace Digital Object record is indexed in the ArchivesSpace PUI |
-
-## Bulk/Collection Linking {#bulk/collection-linking}
-
-### BS-12: User can search DSpace to match a Collection to a Resource
+### BS-10: First DSpace API use in a session bootstraps auth
 
 | Step | Description |
 | :---- | :---- |
-| Given | A Resource with Archival Objects exists in ArchivesSpace. |
-|  | A corresponding Collection with Items exists in DSpace. |
-|  | DSpace integration is configured and enabled. |
-| When | The user opens the Resource record in the SUI. |
-|  | The user navigates to Instances and selects Browse. |
-| Then | The Browse Digital Objects Search popup appears |
-| When | The user filters results to **DSpace Collection** |
-|  | The user filters the text search to keywords in the title |
-|  | The user searches title keywords or UUID |
-| Then | The user finds and selects the corresponding DSpace record |
-
-### BS-13: User creates new Digital Objects using DSpace Metadata source
-
-| Step | Description |
-| :---- | :---- |
-| Given | The user has executed a successful search for a Collection in DSpace via ArchivesSpace Digital Object search, and selected the desired collection |
-|  | DSpace is configured as the Metadata source for new Digital Objects in ArchivesSpace |
-| When | The user clicks Link |
-| Then | An ArchivesSpace digital object is created for each item in the DSpace collection using the metadata from the DSpace object |
-| And | The process is documented in a background job. |
-| And | The user receives a pop up when the job is complete. |
-| And | The Digital Objects are indexed by the ArchivesSpace PUI |
-
-### BS-14: User links new Digital Objects to corresponding Archival Objects
-
-| Step | Description |
-| :---- | :---- |
-| Given | The user has matched a DSpace collection to an ArchivesSpace resource and generated Digital Objects |
-| When | The user navigates to Create \> Digital Object Links (New Option) |
-| Then | The user navigates to the field group for linking AOs to DOs 1:1 |
-|  | The user selects the parent AO |
-|  | The user selects the background job for creating DOs from DSpace records to reference for DOs |
-|  | The user selects a field to match: Title |
-| When | The user selects a button to Review and Link |
-| Then | The user receives a pop up (or loaded into the same interface) with the AOs and their corresponding DOs based on the matched field.  |
-|  | The user deletes any entries with incorrect links |
-| When | The user selects Link |
-| Then | The process is documented in a background job, including a section on links that were removed from the bulk process |
-| And | The objects are re-indexed in the ArchivesSpace PUI |
-
-### BS-15: User links new Digital Objects to one corresponding Archival Object or Resource
-
-| Step | Description |
-| :---- | :---- |
-| Given | The user has matched a DSpace collection to an ArchivesSpace resource and generated Digital Objects |
-| When | The user navigates to Create \> Digital Object Links (New Option) |
-| Then | The user navigates to the field group for linking a set of DOs to an AO |
-|  | The user selects the AO to link |
-|  | The user selects the background job for creating DOs from DSpace records to reference for DOs |
-| When | The user selects Link |
-| Then | The Digital Objects are linked as Instances of the Archival Object or Resource |
-| And | The objects are re-indexed in the ArchivesSpace PUI |
-
-### BS-16: User links Digital Objects or Archival Objects back to DSpace items
-
-| Step | Description |
-| :---- | :---- |
-| Given | A set of Digital Objects exists in ArchivesSpace that include URIs to DSpace |
-| And | A corresponding set of Items exists in DSpace |
-| When | The user navigates to Create \> Digital Object Links (New Option) |
-| Then | The user navigates to the field group for linking a set of DOs to an external repository’s items |
-|  | The user selects the parent AO or Resource  |
-|  | The user selects the link source for DSpace: AO or DO |
-| When | The user selects Link |
-| Then | The AO or DO link is added to the corresponding DSpace item |
-| And | The objects are re-indexed in DSpace |
-
-# 
+| Given | The user has not yet called DSpace in this ArchivesSpace session. |
+| When | The user triggers Mode A typeahead or Mode B Search. |
+| Then | CSRF token GET and service-user login run before search. |
+|  | Token refresh behavior follows configuration / G-11. |
 
 # **Error Scenarios** {#error-scenarios}
 
-## Error scenarios (API-level): Based on A2 Bulk Linking {#error-scenarios-(api-level):-based-on-a2-bulk-linking}
+## Error scenarios (API-level) {#error-scenarios-(api-level)}
 
 | ID | Condition | Expected behavior |
 | :---- | :---- | :---- |
-| ES-01 | DSpace auth failure (401) | Abort batch; no AS mutations |
-| ES-02 | Search returns 0 results | Return empty result set; no mutations |
-| ES-03 | AS GET fails (404) | Skip link; record error for that entry |
-| ES-04 | AS POST fails (400) | Skip DSpace PATCH; record validation errors |
-| ES-05 | DSpace PATCH fails after AS success | Record partial state; surface rollback need |
-| ES-06 | Duplicate `as_ref` or `dspace_item_href` in LinkMap | Reject batch at validation (1:1 rule) |
-| ES-07 | DSpace item missing `dc.date.issued` when creating in DSpace | N/A for A2 spec (BS02 out of scope) |
+| ES-01 | DSpace auth failure (401) | Abort LinkBatch; no AS mutations for this Save's link phase |
+| ES-02 | Search returns 0 results | Empty dropdown / empty Mode B results; no mutations |
+| ES-03 | Mode B Search without Collection | UI validation error; no search call |
+| ES-04 | AS GET child AO fails (404) | Skip link; record error for that entry |
+| ES-05 | AS POST digital object fails (400) | Skip DSpace PATCH; record validation errors |
+| ES-06 | DSpace PATCH fails after AS success | Record partial state; surface rollback need (G-29) |
+| ES-07 | Duplicate `as_ref` or `dspace_item_href` in LinkMap | Reject batch at validation (1:1 rule) |
+| ES-08 | Drag onto an input that already has a selection | Replace provisional selection, or reject — confirm UX (G-34) |
 
 # **User Configuration Requirements** {#user-configuration-requirements}
 
 ## User Configuration Fields {#user-configuration-fields}
 
-The following fields are proposed for the DSpace Integration Settings field group. Exact field names and validation rules are subject to developer review (see Section 9, Open Questions). 
+The following fields are proposed for the DSpace Integration Settings field group. Exact field names and validation rules are subject to developer review (see Open Questions).
 
 | Field | Type | Required | Description |
 | :---- | :---- | :---- | :---- |
-| Integration Enabled | Boolean (toggle) | Yes | Master switch; controls whether the DSpace search UI elements are active for this repository. |
+| Integration Enabled | Boolean (toggle) | Yes | Master switch; controls whether DSpace Linking appears under Instances for this repository. |
 | DSpace Base URL | URL | Yes | Root URL of the target DSpace instance (e.g., https://dspace.example.edu). |
-| DSpace Display Name | Text | No | Human-readable label for the DSpace connection (useful when multiple DSpace repos are configured). See also G-28 |
+| DSpace Display Name | Text | No | Human-readable label for the DSpace connection. See also G-28 |
 | DSpace Service User | Text | Yes | Username for DSpace service account |
 | DSpace Service Password | Text | Yes | Password for DSpace service account |
-| Default Search Set | URI | No | Optional scoping filter to limit DSpace search results to a specific community or collection by Collection or Item URI. See also G-21 |
-| DSpace PID Field | URI | Yes | DSpace source field for PID |
-| DSpace Link Field | Text | Yes | DSpace source field for Digital Object link |
-| ASpace Link Field | Select (Digital ObjectURI or  Parent Object URI) | Yes | ArchivesSpace source field to use for link added to DSpace |
-| DSpace Display Fields | Text | Yes | See G-15 |
-| DSpace Max Results | Number | Yes | See G-20 |
+| DSpace Link Field | Text | Yes | DSpace metadata field that receives the ArchivesSpace URI (default `dc.identifier.uri`) |
+| ASpace Link Field | Select (Digital Object URI or Parent Object URI) | Yes | Which ArchivesSpace URI to write to DSpace |
+| DSpace Display Fields | Text | Yes | Fields shown in Mode A dropdown / Mode B results (see G-15) |
+| DSpace Max Results | Number | Yes | Top N / page size for Mode A typeahead and Mode B results (see G-20) |
+| Typeahead Debounce (ms) | Number | No | Pause before Mode A search; default TBD |
 
 ## New SUI Screen: DSpace Integration Configuration {#new-sui-screen:-dspace-integration-configuration}
 
-Configuration is per ArchivesSpace repository, is managed by an Administrator, and is one-to-one. Each ArchivesSpace repository can connect to one DSpace collection or community. An institution may configure connections to different DSpace repositories by operating more than one ArchivesSpace repository, each with its own settings. 
-
-The DSpace repository is a required field in the ArchivesSpace integration interface. ArchivesSpace administrators can optionally scope the digital object search to a specific community or collection within the DSpace repository.
+Configuration is per ArchivesSpace repository, managed by an Administrator. Each ArchivesSpace repository connects to one DSpace base URL (see G-01 / G-02 for multi-DSpace questions).
 
 ### Configuration Location
 
-Configuration is accessible via: System \> Manage Repositories \> \[Select Repository\] \> DSpace Integration Settings.
+System \> Manage Repositories \> \[Select Repository\] \> DSpace Integration Settings.
 
 The field group should be collapsible. Saving the configuration should trigger a validation check (connectivity test to the DSpace base URL).
 
-**Fields** \- See Configuration  
 **Buttons**
 
 | Button | Action | Notes |
@@ -818,46 +773,47 @@ The field group should be collapsible. Saving the configuration should trigger a
 
 # **User Interface Requirements** {#user-interface-requirements}
 
-## New SUI Screen: Digital Object Search Screen {#new-sui-screen:-digital-object-search-screen}
+## DSpace Linking section (under Instances) {#dspace-linking-section-(under-instances)}
 
-### Search Section
+Visible on **Resource** and **Archival Object** edit views when Integration Enabled. Tentative section title: **DSpace Linking**.
 
-**Search Fields**
+### New DSpace Links panel
 
-| Field Name | Field Type | Validation Rules | Business Logic |
-| :---- | :---- | :---- | :---- |
-| Title | Text |  |  |
-| URI | Text |  |  |
-| Keywords | Text |  | Split on spaces? |
+| Element | Behavior |
+| :---- | :---- |
+| Child rows | One row per immediate child AO (Resource → top-level AOs; AO → child AOs) |
+| Link input | Token/search input reusable from AS's internal digital-object linker: typeahead, select, clear (X) |
+| Mode A | Debounced DSpace item search from typed text; dropdown of top N results |
+| Empty state | Placeholder e.g. "Type to search available records.." |
+| No required links | Zero selections is valid |
 
-**Buttons**
+See mockup: [images/A1-2-dspace-linking-new-links-mockup.png](images/A1-2-dspace-linking-new-links-mockup.png)
 
-| Button | Action | Notes |
-| :---- | :---- | :---- |
-| Search | Posts search to DSpace API |  |
-| Cancel | Closes screen returns user to prior screen |  |
-|  |  |  |
+### DSpace Search panel
 
-### Results Section
+| Element | Behavior |
+| :---- | :---- |
+| Collection | Required select; options from `dsoType=collection` search |
+| Query | Text input |
+| Search | Runs scoped item search (`scope` + `dsoType=item` + `query`) |
+| Results | List suitable for drag-and-drop onto New DSpace Links inputs |
+| Mode B | Drag result → child input maintains provisional link |
 
-**Display Fields**  
-Per configuration
+### Host-record actions
 
-**Buttons**
+| Control | Action |
+| :---- | :---- |
+| Save Archival Object / Save Resource | Build LinkMap from provisional links; run LinkBatch; persist host record as usual |
+| Cancel | Discard unsaved host-record edits including provisional DSpace selections |
 
-| Button | Action | Notes |
-| :---- | :---- | :---- |
-| Publish | Executes publish steps | Next to each result |
-| Pagination? |  |  |
-
-## Existing SUI Screens: {#existing-sui-screens:}
+## Existing SUI Screens {#existing-sui-screens}
 
 | UI Section | UI Element | Specification |
 | :---- | :---- | :---- |
-| System \> Manage Repositories \> \[Select Repository\] \>  | Configure DSpace | A new Configure DSpace option that procure the DSpace Configuration screen |
-| Resources \> Instances | Add DSpace Digital Object | A new Add DSpace Digital Object Button that produces the DSpace Digital Object Search Screen, visible only when DSpace linking integration is enabled  |
-| Resources \> Archival Object \> Instances | Add DSpace Digital Object | A new Add DSpace Digital Object Button that produces the DSpace Digital Object Search Screen, visible only when DSpace linking integration is enabled  |
-| Digital Object \> File Versions | Add Dspace Digital Object | A new Add DSpace Digital Object Button that produces the DSpace Digital Object Search Screen, visible only when DSpace linking integration is enabled |
+| System \> Manage Repositories \> \[Select Repository\] | DSpace Integration Settings | Configuration field group (see above) |
+| Resources \> \[Resource\] \> Instances | DSpace Linking | New section with New DSpace Links + DSpace Search |
+| Resources \> Archival Object \> Instances | DSpace Linking | Same section; children = that AO's immediate children |
+| Digital Object (standalone) | — | **Out of scope** — no DSpace Linking injection |
 
 # **Open Questions and Specification Gaps**
 
@@ -866,32 +822,36 @@ Per configuration
 | **G-01** | Configuration | Is DSpace configuration per ArchivesSpace repository or per ArchivesSpace instance? | ASpace Program Manager |
 | **G-02** | Configuration | Do we need to support the possibility of configuring multiple DSpace repositories for end-user selection? | ASpace Program Manager |
 | **G-03** | Authentication | Is the DSpace service user feasible for handling authentication? Does the submission need to be tied to an individual end-user? Possible through OnBehalfOf header but would increase scope to handle matching ASpace user to DSpace user. Can we exclude it from scope? | ASpace Program Manager |
-| **G-04** | Linking | Is there any duplicate detection required for DSpace links added to ArchivesSpace (within or across ArchivesSpace records? | ASpace Program Manager, ASpace Devs |
+| **G-04** | Linking | Is there any duplicate detection required for DSpace links added to ArchivesSpace (within or across ArchivesSpace records)? | ASpace Program Manager, ASpace Devs |
 | **G-05** | Configuration, Linking | Is the proposed solution for identifying the ArchivesSpace URI to add to DSpace sufficient? (e.g. configuration option to choose Digital Object or Parent record as the source) | ASpace Program Manager, ASpace Devs |
-| **G-06** | Linking, Search | We need more work on the way bulk linking will work.  So far we have only defined the scenario where all items in a DSpace collection are added to an ArchivesSpace record.  What are the actual scenarios we need to cover? How will many-to-many matching work when the number of items differs? Need to step through the possibilities here. | Jess, ASpace Program Manager, ASpace Devs |
-| **G-07** | Configuration | Should the content-types supported for linking be configurable?  | ASpace Program Manager |
-| **G-08** | Linking | Add Behavior Scenario for handing of multi-valued language when populating Digital Object metadata (But see also G-27) | Jess |
+| **~~G-06~~** | ~~Linking, Search~~ | ~~Bulk “whole collection → AS” matching.~~ **Superseded in v0.4:** linking is per immediate child via Mode A typeahead and/or Mode B collection-scoped search + drag-and-drop; Save builds a LinkMap of 0..N provisional links. | — |
+| **G-07** | Configuration | Should the content-types supported for linking be configurable? | ASpace Program Manager |
+| **G-08** | Linking | Add Behavior Scenario for handling of multi-valued language when populating Digital Object metadata (But see also G-27) | Jess |
 | **G-09** | Linking | Review behavior for when DSpace object already has linked identifiers and whether we need to support different PATCH operators | Maybe can wait for implementation? |
-| **G-10** | Linking, Search | DSpace search field behavior needs further investigation \- can we search multiple fields at a time? What operators are available? Do we need to let the users choose? | Jess |
+| **G-10** | Linking, Search | DSpace search field behavior needs further investigation — can we search multiple fields at a time? What operators are available? Do we need to let the users choose? | Jess |
 | **G-11** | Authentication | Confirm feasibility of token refresh behavior | ASpace Devs |
-| **G-12** | Linking | Confirm that options for both publish and save should be supported distinctly and if so add behavior scenarios for when user chooses Publish vs Save from DSpace search results (i.e. Save & Publish in one step).  | ASpace Program Manager, ASpace Devs |
-| **G-13** | Linking | What transaction support is required (e.g. if publishing a link to DSpace fails, does the link in ArchivesSpace also fail?) | ASpace Program Manager, ASpace Devs |
-| **G-14** | Configuration | Do search fields need to be configurable? | ASpace Program Manager |
-| **G-15** | Configuration | Do search result display fields need to be configurable?   Items returns dc.title, UUID, handle, owningCollection, mappedCollections (plus more). Browses returns dc.title, dc.dateissued, dc.dateaccessioned (only). | ASpace Program Manager |
-| **G-16** | Configuration | Should any other fields in the ASpace Digital Object record besides title, identifier, URI and language be populatable from the DSpace metadata? | ASpace Program Manager, ASpace Devs |
-| **G-17** | Linking | Is there ever a scenario where anything other than the DSpace metadata is used to create a new Digital Object from a DSpace object? | ASpace Program Manager |
-| **G-18** | Linking | When creating a new Digital Object from a DSpace object, does it get created as a new File Version? Does this need to be explicitly stated in the behavior scenario? | ASpace Devs |
-| **G-19** | Linking | Is confirmation required before creating multiple ArchivesSpace Digital Objects? | ASpace Program Manager, ASpace Devs |
-| **G-20** | Linking, Configuration | Should pagination of search results be supported? Max number of results enforced? | ASpace Program Manager, ASpace Devs |
-| **G-21** | Configuration | Is the option to scope search to a single parent collection in DSpace useful? | ASpace Program Manager |
-| **G-22** | UI | Does anything need to be changed about the System \> System Information page?  | ASpace Devs |
+| **G-12** | Linking | Should Save also publish new Digital Objects / instances, or remain unpublished until staff publish separately? (Old “Publish button per search result” UX removed in v0.4.) | ASpace Program Manager, ASpace Devs |
+| **G-13** | Linking | What transaction support is required (e.g. if writing the link to DSpace fails, does the AS Digital Object also fail / roll back?) | ASpace Program Manager, ASpace Devs |
+| **G-14** | Configuration | Do Mode A search fields / query construction need to be configurable beyond free text? | ASpace Program Manager |
+| **G-15** | Configuration | Do search result display fields need to be configurable? Items returns dc.title, UUID, handle, owningCollection, mappedCollections (plus more). | ASpace Program Manager |
+| **G-16** | Configuration | Should any other fields in the ASpace Digital Object record besides title, identifier, File URI and language be populatable from the DSpace metadata? | ASpace Program Manager, ASpace Devs |
+| **G-17** | Linking | Is there ever a scenario where anything other than the DSpace metadata (plus child AO display string fallback) is used to create a new Digital Object? | ASpace Program Manager |
+| **~~G-18~~** | ~~Linking~~ | ~~File Version vs Identifier.~~ **Resolved in v0.4 (aligned with A3–4):** create a new Digital Object with **Identifier = File URI = DSpace public item URI**, then link it to the child Archival Object. | — |
+| **G-19** | Linking | Is confirmation required before Save creates multiple ArchivesSpace Digital Objects? | ASpace Program Manager, ASpace Devs |
+| **G-20** | Linking, Configuration | Mode A: first page / top N only, or full pagination? Mode B pagination? Max results enforced via DSpace Max Results? | ASpace Program Manager, ASpace Devs |
+| **~~G-21~~** | ~~Configuration~~ | ~~Is collection scope useful?~~ **Resolved in v0.4:** Mode B **requires** Collection (`scope=UUID`). Mode A typeahead is not collection-scoped by default (confirm whether optional scope should be added). | — |
+| **G-22** | UI | Does anything need to be changed about the System \> System Information page? | ASpace Devs |
 | **G-23** | Error handling & Logging | Do we need to capture errors in the ArchivesSpace logs? | ASpace Program Manager, ASpace Devs |
-| **G-24** | Error handling & Logging | What details about link actions need to be recorded in the ArchivesSpace logs?  | ASpace Program Manager, ASpace Devs |
+| **G-24** | Error handling & Logging | What details about link actions need to be recorded in the ArchivesSpace logs? | ASpace Program Manager, ASpace Devs |
 | **~~G-26~~** | ~~User Stories~~ | ~~Copy the nice user story narratives from the GitHub issues into the overview~~ | ~~Jess~~ |
-| **G-27** | Linking, Configuration | Do DSpace and Archive use different language codes? How do we handle this mapping? | ASpace Program Manager, ASpace Devs |
-| **G-28** | Configuration, UI | Do we want to allow for use of DSpace Display Name from configuration in the UI Widgets for accessing the functionality (e.g. buttons, etc.) | ASpace Program Manager, ASpace Devs |
-| **G-29** | Bulk Linking | Rollback AS when DSpace PATCH fails? Default for v0.1 \= Fail-forward; report partial state | ASpace Program Manager, Devs |
-| **G-30** | Bulk Linking | Attach new DO to archival\_object.instances in same transaction? Default v0.1 \= Required for `create_digital_object` mode |  |
-| **G-31** | Bulk Linking | Proposed plugin endpoint wrapping LinkBatch? Default for v0.1 \= Required for `create_digital_object` mode |  |
-| **G-32** | Bulk Linking | Proposed plugin endpoint wrapping LinkBatch? Default for v0.1 \= Optional `POST /repositories/:id/integrations/dspace/links` — not required if orchestrator is external |  |
-| **G-33** | Linking | Exact DSpace metadata field for AS URI? Default for v0.1 \= `dc.identifier.uri` Is this Handle on the front end? What if there are multiple URIs? |  |
+| **G-27** | Linking, Configuration | Do DSpace and ArchivesSpace use different language codes? How do we handle this mapping? | ASpace Program Manager, ASpace Devs |
+| **G-28** | Configuration, UI | Do we want to allow for use of DSpace Display Name from configuration in the UI (section title, buttons, etc.)? | ASpace Program Manager, ASpace Devs |
+| **G-29** | Linking | Rollback AS when DSpace PATCH fails? Default for v0.4 = Fail-forward; report partial state | ASpace Program Manager, Devs |
+| **~~G-30~~** | ~~Linking~~ | ~~Attach new DO to archival_object.instances?~~ **Resolved in v0.4:** Required — create DO then attach as digital-object instance on the child AO. | — |
+| **G-31** | Linking | Proposed plugin endpoint wrapping LinkBatch? Optional `POST /repositories/:id/integrations/dspace/links` — not required if orchestrator stays in-plugin on Save | ASpace Devs |
+| **G-32** | Linking | Exact timing of LinkBatch vs native host-record Save (before, after, or interleaved with AS form POST)? | ASpace Devs |
+| **G-33** | Linking | Exact DSpace metadata field for AS URI? Default = `dc.identifier.uri`. What if there are multiple URIs? | ASpace Program Manager, Devs |
+| **G-34** | UI | Drag-and-drop onto an input that already has a provisional selection: replace or reject? | UX / ASpace Devs |
+| **G-35** | Linking | Move AS create + DSpace PATCH to a background job after Save? Deferred for now ([jobs_example](https://github.com/archivesspace/archivesspace/tree/81f7c21b7c249f7d6438d3f2d9583aa501cb5762/plugins/jobs_example)); specify later if needed. | ASpace Program Manager, Devs |
+| **G-36** | UI | Final label for the Instances section (“DSpace Linking” vs configured Display Name) and panel titles (“New DSpace Links”, “DSpace Search”). | UX / PM |
+
