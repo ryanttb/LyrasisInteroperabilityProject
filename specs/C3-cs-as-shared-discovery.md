@@ -11,11 +11,11 @@ last_synced: 2026-07-31
 *Unified Search and Display Interface for archives and material culture*
 
 Document Status: DRAFT  
-Version: 0.3  
-Date: June 2026  
+Version: 0.4  
+Date: July 2026  
 Source Story: [C3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/51)  
 Project: LYRASIS Interoperability Project  
-Systems: Discovery Layer (OAI-PMH) – ArchivesSpace PUI – CollectionSpace Public Browser
+Systems: Shared Discovery app (UI \+ BFF) – ArchivesSpace Search API / PUI – CollectionSpace public gateway / Public Browser
 
 [Purpose and Scope](#heading=)
 
@@ -49,13 +49,13 @@ Systems: Discovery Layer (OAI-PMH) – ArchivesSpace PUI – CollectionSpace Pub
 
 # **Purpose and Scope**
 
-This specification defines requirements for a unified search and display interface that surfaces records from both ArchivesSpace and CollectionSpace in a single search experience. 
+This specification defines requirements for a unified search and display interface that surfaces records from both ArchivesSpace and CollectionSpace in a single search experience. Architecture is **federated live search**: a new shared-discovery application queries each system’s public search backend in parallel, normalizes hits into result cards, and links out to the originating public UIs.
 
 ## Assumptions
 
 | ID | Assumption |
 | :---- | :---- |
-| A-01 | **Path A** is the implementation target for this deliverable unless product explicitly selects Path B. |
+| A-01 | Implementation is **federated live search** via a new shared-discovery application (UI \+ BFF). |
 | A-02 | Scope is **one configured pair**: one ArchivesSpace instance (one or more repositories, configurable) \+ one CollectionSpace tenant. |
 | A-03 | Deliverable is a **new** shared-discovery application (public UI \+ BFF), not a plugin inside AS PUI or CS Public Browser. |
 | A-04 | **Click-through only:** result titles / “View full record” open the AS PUI or CS Public Browser in a **new tab**. No intermediate detail page in the shared UI. |
@@ -67,7 +67,7 @@ This specification defines requirements for a unified search and display interfa
 | A-10 | Facets in v1 are **coarse**: source system; optional “has media/thumbnail”; optional simple date bounds if both adapters can supply them cheaply. |
 | A-11 | “Is it digitized / can I view the item?” is a **nice-to-have** signal on the card when detectable — not a v1 blocker. |
 | A-12 | Duplicate / related-record merging across AS and CS is **out of scope**. |
-| A-13 | **C1 is not required** for Path A. OAI remains the path for *external* harvesters and for Path B. |
+| A-13 | **C1 is not required.** This feature does not harvest via OAI-PMH; it queries live search APIs. |
 
 ## Records in Scope
 
@@ -76,22 +76,21 @@ This specification defines requirements for a unified search and display interfa
 | ArchivesSpace | Archival Object records, Digital Object records |
 | CollectionSpace | Object records, associated media |
 
-Out of scope: the underlying discovery platform implementation (Blacklight, VuFind, Primo, etc.), OAI-PMH harvesting infrastructure, authentication/authorization for end users, and any changes to ArchivesSpace or CollectionSpace data models.
+Out of scope: OAI-PMH harvesting and institutional discovery-platform configuration (Blacklight, VuFind, Primo, etc.), authentication/authorization for end users of the shared UI, and any changes to ArchivesSpace or CollectionSpace data models.
 
 # **Background**
 
-ArchivesSpace is an archives content management system with resource records (collections), archival object components (series, folders, items), and related digital objects and agents. CollectionSpace manages material culture records: individual objects, groups of objects (exhibitions), and associated media. Following C1 implementation, both systems will be able to publish their records to an OAI-PMH discovery layer, but users searching that layer would see records from both systems intermingled without context about their origin or type, making it difficult to understand what they are looking at or how to navigate to the source system for more detail.
+ArchivesSpace is an archives content management system with resource records (collections), archival object components (series, folders, items), and related digital objects and agents. CollectionSpace manages material culture records: individual objects, groups of objects (exhibitions), and associated media. Each system already exposes public search (ArchivesSpace Solr search API; CollectionSpace public gateway → Elasticsearch) and a public record UI (AS PUI; CS Public Browser).
 
 Institutions with both ArchivesSpace and CollectionSpace sometimes hold historically related material across both systems. A researcher looking for records about a person, event, or topic may find relevant archival finding aids in ArchivesSpace and related museum objects in CollectionSpace. A unified search interface that presents both — while clearly distinguishing them — significantly improves research usability.
 
 # **System Overview**
 
-## Architecture Paths
+## Architecture: Federated Live Search
 
-### Search Path A \- Federated Live Search
+![][image1]
 
-![][image1]  
-  On each search request the BFF (backend for frontend):
+On each search request the BFF (backend for frontend):
 
 1. Issues **parallel** queries to AS and CS (subject to source filter).  
 2. Maps each hit into a shared **result card** schema.  
@@ -100,28 +99,13 @@ Institutions with both ArchivesSpace and CollectionSpace sometimes hold historic
 
 **Pros:** No harvest lag; reuses published search indexes; no dependency on C1; smallest honest v1.
 
-**Cons:** Relevance scores are **not comparable** across systems; facet vocabularies differ; one source down ⇒ partial results (not “stale harvest”).
+**Cons:** Relevance scores are **not comparable** across systems; facet vocabularies differ; one source down ⇒ partial results.
 
-Only select fields are displayed to the user (see [Display Implementation Options](#display-implementation-options)). The user will have a single search bar where they can key an initial search by keyword. Additional search refinement happens after the search is complete using filters and facets. 
+Only select fields are displayed to the user (see [Display Implementation Options](#display-implementation-options)). The user will have a single search bar where they can key an initial search by keyword. Additional search refinement happens after the search is complete using filters and facets.
 
-The keyword search searches all of the Dublin Core fields available, whether or not the fields are shown in the user’s unified search preview display. 
+The keyword search covers the fields each adapter maps into the result card (and underlying IR search indexes), whether or not every field is shown in the preview display.
 
-The user can follow links to the records in the source system (ArchivesSpace Public User Interface or CollectionSpace Public Browser), which includes additional metadata beyond Dublin Core.
-
-### Search Path B: Harvest → institutional discovery index
-
-![][image2]
-
-This is what the drafted behavior scenarios describe. It remains valid for institutions that **already** run (or will run) a discovery platform. C1 then becomes a real dependency for CS participation. This draft does **not** design Path B beyond noting where previously identified gaps (G-04 source detection, G-08 harvest staleness, D-01–D-05) belong.
-
-| Concern | Path A | Path B |
-| :---- | :---- | :---- |
-| Search mechanism | Live IR APIs | Local index over harvested DC (+ extras) |
-| C1 required? | **No** | **Yes** (for CS) |
-| Freshness | Near real-time with IR indexes | Harvest schedule; ES01 stale-data UX |
-| New software in this project | **Yes** — shared discovery app | Mostly config of existing platform |
-| Cross-system relevance ranking | Not claimed | Possible inside one index |
-| Deduping AS↔CS | Out of scope (both) | Out of scope (both) |
+The user can follow links to the records in the source system (ArchivesSpace Public User Interface or CollectionSpace Public Browser), which includes additional metadata beyond the preview card.
 
 # **Actors and Deployment Context** {#actors-and-deployment-context}
 
@@ -147,7 +131,7 @@ This is what the drafted behavior scenarios describe. It remains valid for insti
 | `cs.publicBrowserBaseUrl` | Link-out base for object pages |
 | `cs.esIndex` / query template | Match public browser expectations for the tenant/profile |
 | `ui.defaultLayout` | `grouped` (A) or `unified` (B) |
-| `ui.labels` | “Archival Records” / “Museum Objects” (parent G-05) |
+| `ui.labels` | “Archival Records” / “Museum Objects” (see Gap G-05) |
 | Timeouts / page size defaults | Fail a group fast rather than block the whole response |
 
 # **New components** {#new-components}
@@ -187,7 +171,7 @@ GET /repositories/{repo_id}/search?q={lucene}&type[]=archival_object&type[]=digi
 
 * Hits are **Solr documents**, not full JSONModels. Useful fields commonly include `title`, `primary_type` / `types`, `uri`, `identifier`, dates, and a string `json` blob for deeper mapping when needed.  
 * **Auth model for v1:** BFF holds a read-only username/password (or long-lived session refresh). Browser never sees the session header. Confirm with each deploy whether firewall policy allows only the BFF IP to reach `:8089`.  
-* **Publish/public visibility:** Prefer filters that match what the **PUI** would show (unpublished suppression). Exact filter\_query flags are an open decision (D-03) — do not return staff-only hits in a public UI.
+* **Publish/public visibility:** Prefer filters that match what the **PUI** would show (unpublished suppression). Exact filter\_query flags are an open decision — do not return staff-only hits in a public UI.
 
 ## CollectionSpace
 
@@ -198,18 +182,18 @@ GET /repositories/{repo_id}/search?q={lucene}&type[]=archival_object&type[]=digi
 
 ## What we deliberately do *not* query
 
-* OAI-PMH endpoints (no `q=` search)  
+* OAI-PMH endpoints (harvest protocol; not a search API)  
 * CS staff Common Services search (auth \+ over-broad visibility)  
 * Direct browser calls to AS `:8089`
 
 # **Intermediate Result Card Schema** {#intermediate-result-card-schema}
 
-Normalize **after** search, at the BFF Align display labels with the parent Intermediate Metadata Schema where practical.
+Normalize **after** search, at the BFF. Align display labels with the field maps below where practical.
 
 | Field | Type | Required | Notes |
 | :---- | :---- | :---- | :---- |
 | `id` | string | yes | Stable within source: AS `uri` or CS CSID / ES `_id` |
-| `source` | `"archivesspace"` | `"collectionspace"` | yes | Drives labels / filters |
+| `source` | `"archivesspace"` \| `"collectionspace"` | yes | Drives labels / filters |
 | `recordType` | string | yes | e.g. `archival_object`, `digital_object`, `CollectionObject` |
 | `title` | string | yes | Display \+ link text |
 | `identifier` | string | no | AS component id / CS objectNumber |
@@ -217,36 +201,27 @@ Normalize **after** search, at the BFF Align display labels with the parent Inte
 | `description` | string | no | Truncate \~250 chars in UI |
 | `creator` | string | no |  |
 | `subjects` | string\[\] | no | Nice-to-have; coarse filter later |
-| `thumbnailUrl` | string | null | no | Nice-to-have (Gap G-11) |
+| `thumbnailUrl` | string \| null | no | Nice-to-have (Gap G-11) |
 | `hasMedia` | boolean | no | Nice-to-have digitized signal |
 | `sourceUrl` | string | yes | Absolute link-out to AS PUI or CS Public Browser |
-| `foundIn` | string | null | no | AS hierarchy breadcrumb text; CS usually null (Gap G-10) |
+| `foundIn` | string \| null | no | AS hierarchy breadcrumb text; CS usually null (Gap G-10) |
 
 **Display field matching:** When rendering a card, use this schema’s keys so the UI does not show both `Title` and `title` as separate rows. Source-specific labels (e.g. “Scope and Contents” vs “Brief Description”) may still differ by `source` in Option A templates; Option B uses the unified labels above.
 
-## Intermediate Metadata Schema Maps
+## Field maps (AS / CS → result card)
 
-### Search Path A and B
-
-| Dublin Core Field | System label (Proposed) | Display Label (Proposed) | ArchivesSpace Field | CollectionSpace Field |
+| Dublin Core analogue | System label (Proposed) | Display Label (Proposed) | ArchivesSpace Field | CollectionSpace Field |
 | :---- | :---- | :---- | :---- | :---- |
 | title | `title` | Title | Object:archival\_object Property: Title | Title |
 | identifier | `identifier` | Identifier | Object:archival\_object Properties: component\_id | objectNumber |
 | subject | `subjects` | Category or Subject | Object:linked\_agents Properties: IF role \== subject | contentConcept |
-| date | `dateDisplay` | Date Created | Object:dates Properties: IF ‘expression’, ELSE ‘begin \+ “...” \+ end’ | Pull earliest/latest scalar values from the date details and concatenate them with '/'. |
+| date | `dateDisplay` | Date Created | Object:dates Properties: IF ‘expression’, ELSE ‘begin \+ “...” \+ end’ | Pull earliest/latest scalar values from the date details and concatenate them with '/'. |
 | description | `description` | Description | Object:notes Properties: type \= scopecontent | briefDescription |
-| creator | `creator` | Creator | Object:linked\_agents Properties: role \== creator & NOT relator \== ctb OR pbl | IF ‘objectProductionPerson’ ELSE ‘objectProductionOrganization’ELSE ‘objectProductionPeople’ |
-| Identifier (repeated) | `id` | \[Title\] | Object:resource Property:uri "AppConfig\[:public\_proxy\_url\] \+ " uri | [C1 Gap G-13](https://docs.google.com/document/d/1TuCEufv8ekB6XgZT3aEr8g7ciW4d-xPvLh7T8tLswO4/edit?tab=t.0#heading=h.7qjoulj8v5dv) |
+| creator | `creator` | Creator | Object:linked\_agents Properties: role \== creator & NOT relator \== ctb OR pbl | IF ‘objectProductionPerson’ ELSE ‘objectProductionOrganization’ ELSE ‘objectProductionPeople’ |
+| Identifier (link target) | `id` / `sourceUrl` | \[Title\] | Object:resource Property:uri "AppConfig\[:public\_proxy\_url\] \+ " uri | Public browser object URL (see C1 Gap G-13 for related public URL work) |
 | source | `source` | Source | Object Type subset (archival\_object, digital\_object) | Record Type: Object |
-| Gap G- : Is there a DC mapping for this? | `foundIn` | Found in | Hyperlinked breadcrumb of item’s location in hierarchy out of scope, see Gap G-10 | None |
-| Gap G-11 \- thumbnail / media preview | `thumbnailURL` | N/A | Gap G-11 \- Digital object preview | Gap G-11 \- media thumbnail |
-
-### Search Path B: Additional Fields
-
-| Dublin Core Field | Proposed Display Label (Unified) | ArchivesSpace Field | CollectionSpace Field |
-| :---- | :---- | :---- | :---- |
-| Gap G-08 | Last successful harvest | Gap G-08 | Gap G-08 |
-|  |  |  |  |
+| — | `foundIn` | Found in | Hyperlinked breadcrumb of item’s location in hierarchy; see Gap G-10 | None |
+| — | `thumbnailUrl` | N/A | Gap G-11 \- Digital object preview | Gap G-11 \- media thumbnail |
 
 # **Display Implementation Options** {#display-implementation-options}
 
@@ -269,17 +244,17 @@ Each feature is repeated for each data source in Display Option A.
 
 ### Record Metadata Display
 
-| dc\_oai field | Proposed Display Label | AS Record Display | CS Record Display | Proposed Field Behavior |
+| Result card field | Proposed Display Label | AS Record Display | CS Record Display | Proposed Field Behavior |
 | :---- | :---- | :---- | :---- | :---- |
 | title | Title | x | x | Links to ASpace PUI or CSpace PB record |
-| type | Type | x | x | Not linked |
+| recordType | Type | x | x | Not linked |
 | identifier | Object Number |  | x | Not linked |
 | identifier | Identifier | x |  | Not linked |
-| created | Date Made |  | x | Not linked |
+| dateDisplay | Date Made |  | x | Not linked |
 | description | Brief Description |  | x | Display limited to 250 characters with link to read more |
 | description | Scope and Contents | x |  | Display limited to 250 characters with link to read more |
-| Gap G-10 | Found in | x |  | Breadcrumbs link to the record in AS PUI |
-| Gap G-11 | none | x | x | Thumbnail / media preview |
+| foundIn | Found in | x |  | Breadcrumbs link to the record in AS PUI |
+| thumbnailUrl | none | x | x | Thumbnail / media preview |
 
 ## Display Option B – Unified List
 
@@ -292,31 +267,31 @@ Each feature is repeated for each data source in Display Option A.
 | Proposed Display Label | Element type | Source field | Purpose |
 | :---- | :---- | :---- | :---- |
 | Previous | Showing results **\# \- \#** | Next | Search navigation | N/A | Search navigation |
-| Platform or Type | Filter | Source system field (see [Configuration Requirements](#configuration-requirements)) | Filter results by CollectionSpace or ArchivesSpace |
-| Creator | Free text box | oai:dc:creator |  |
-| Date \- Earliest | Validated Text box (YYYY or YYYY-MM-DD) | oai:dc:date | Filter results by date |
-| Date \- Latest | Validated Text box (YYYY or YYYY-MM-DD) | oai:dc:date | Filter results by date |
-| Results Display | Controlled field | Thumbnail display | Filter results by ‘Records with Media’ or ‘All Records’ |
+| Platform or Type | Filter | `source` (see [Configuration Requirements](#configuration-requirements)) | Filter results by CollectionSpace or ArchivesSpace |
+| Creator | Free text box | `creator` | Refine by creator |
+| Date \- Earliest | Validated Text box (YYYY or YYYY-MM-DD) | `dateDisplay` / upstream date fields | Filter results by date |
+| Date \- Latest | Validated Text box (YYYY or YYYY-MM-DD) | `dateDisplay` / upstream date fields | Filter results by date |
+| Results Display | Controlled field | `hasMedia` / `thumbnailUrl` | Filter results by ‘Records with Media’ or ‘All Records’ |
 
-### Record Metadata Display: OAI Fields
+### Record Metadata Display: Common Fields
 
-See [Intermediate Metadata Schema](#intermediate-result-card-schema) for detailed information on how to render ArchivesSpace and CollectionSpace fields.
+See [Intermediate Result Card Schema](#intermediate-result-card-schema) for detailed information on how to render ArchivesSpace and CollectionSpace fields.
 
-| dc\_oai Field | Proposed Display Label | ArchivesSpace Field | CollectionSpace Field | Proposed Field Behavior |
+| Result card field | Proposed Display Label | ArchivesSpace Field | CollectionSpace Field | Proposed Field Behavior |
 | :---- | :---- | :---- | :---- | :---- |
 | title | Title | Title | Title | Links to ASpace PUI or CSpace PB record |
 | identifier | Identifier | component\_id | objectNumber | Not linked |
-| subject | Category or Subject | linked\_agents | contentConcept | Not linked |
-| date | Date Created | date | date | Not linked |
+| subjects | Category or Subject | linked\_agents | contentConcept | Not linked |
+| dateDisplay | Date Created | date | date | Not linked |
 | description | Description | notes | briefDescription | Display limited to 250 characters with link to read more |
-| Gap G-11 | none | x | x | Thumbnail / media preview |
+| thumbnailUrl | none | x | x | Thumbnail / media preview |
 
-### Record Metadata Display: Non-OAI Fields
+### Record Metadata Display: Source-specific Fields
 
-| Dublin Core Field | Proposed Display Label | ArchivesSpace Field | CollectionSpace Field | Proposed Field Behavior |
+| Result card field | Proposed Display Label | ArchivesSpace Field | CollectionSpace Field | Proposed Field Behavior |
 | :---- | :---- | :---- | :---- | :---- |
-| type | Type | Type subset (archival\_object, resource, accession, digital\_object, classification) | Gap G-  Record Type: Object, Relationship:Record Group?  | Does not come from OAI-PMH Not linked |
-| Gap G-10 | Found in | Hyperlinked breadcrumb of item’s location in hierarchy | None | Breadcrumbs link to the record in AS PUI |
+| recordType | Type | Type subset (archival\_object, digital\_object) | CollectionObject | Not linked |
+| foundIn | Found in | Hyperlinked breadcrumb of item’s location in hierarchy | None | Breadcrumbs link to the record in AS PUI |
 
 ## Recommendation: Display Options
 
@@ -336,7 +311,7 @@ GET /api/v1/search?q=pottery&sources=archivesspace,collectionspace&pageAs=1&page
 | `sources` | Subset of configured sources |
 | `pageAs` / `pageCs` | Independent pagination (Option A). Option B UI may advance both or the active source |
 | `pageSize` | Per source |
-| `hasMedia` | `any` | `true` — best-effort; ignored if adapter cannot filter |
+| `hasMedia` | `any` \| `true` — best-effort; ignored if adapter cannot filter |
 | `dateFrom` / `dateTo` | Optional coarse strings; adapter no-ops if unsupported |
 
 ```json
@@ -371,7 +346,7 @@ GET /api/v1/search?q=pottery&sources=archivesspace,collectionspace&pageAs=1&page
 }
 ```
 
-If one upstream fails: that group returns `"status": "error"` (or `"degraded"`) with `results: []` and an opaque message; the other group still renders. This replaces parent ES01’s harvest-staleness story for the previous spec.
+If one upstream fails: that group returns `"status": "error"` (or `"degraded"`) with `results: []` and an opaque message; the other group still renders.
 
 # **High-Level Sequence** {#high-level-sequence}
 
@@ -385,13 +360,12 @@ Note: Behavior Scenarios may be updated to align with Display Implementation Opt
 
 | Step | Description |
 | :---- | :---- |
-| Given | The discovery layer has harvested records from both ArchivesSpace and CollectionSpace. |
-|  | Both source systems are labeled and record types are indexed. |
-|  | Both source systems have defined search APIs |
+| Given | The shared discovery app is configured for one ArchivesSpace instance and one CollectionSpace tenant. |
+|  | Both source systems are labeled and their public search APIs are reachable from the BFF. |
 | When | An end user enters a keyword search in the unified discovery interface. |
-| Then | \[*Result depends on Implementation Path; this example is for unified display\]* Search results include records from both ArchivesSpace and CollectionSpace, ranked by relevance. |
+| Then | Search results include records from both ArchivesSpace and CollectionSpace (subject to each backend’s relevance ranking within its group). |
 |  | Each result card displays: title, source system label (e.g., 'Archival Records' / 'Museum Objects'), record type, date, brief description, and thumbnail (if available). |
-|  | The result count shows totals from both systems combined. |
+|  | Each source group shows its own result total (Option A); Option B may also show a combined count for display only. |
 
 ## BS02: End user filters results by source system
 
@@ -400,8 +374,7 @@ Note: Behavior Scenarios may be updated to align with Display Implementation Opt
 | Given | Search results contain records from both ArchivesSpace and CollectionSpace. |
 | When | The user selects 'Archival Records' in the source system facet. |
 | Then | Only ArchivesSpace records are displayed. |
-|  | The record type facet updates to show only ArchivesSpace record types. |
-|  | Selecting 'Museum Objects' shows only CollectionSpace records, with CollectionSpace-specific facet values. |
+|  | Selecting 'Museum Objects' shows only CollectionSpace records. |
 
 ## BS03: End user views a search result and navigates to the source system
 
@@ -412,49 +385,27 @@ Note: Behavior Scenarios may be updated to align with Display Implementation Opt
 | Then | For an ArchivesSpace record: the user is taken to the corresponding record in the ArchivesSpace PUI. |
 |  | For a CollectionSpace record: the user is taken to the corresponding record in the CollectionSpace public browser. |
 |  | The link opens in a new tab. |
-|  | The user views a full metadata record, which includes additional metadata beyond the Dublin Core OAI-PMH harvest |
+|  | The user views a full metadata record in the source system, including fields beyond the shared preview card. |
 
-## BS05: End user finds related records across both systems
-
-| Step | Description |
-| :---- | :---- |
-| Given | A search result from ArchivesSpace has a subject heading that also appears in CollectionSpace records. |
-| When | The user views the result. |
-| Then | A 'Related records' panel or subject heading link allows the user to see other records (from either system) sharing the same subject. \[PLACEHOLDER — related record display mechanism TBD, see Gap G-07.\] |
-
-## BS05: End user searches or facets by subject (unified interface only)
+## BS04: End user searches or facets by subject (unified interface only)
 
 | Step | Description |
 | :---- | :---- |
-| Given | A user has performed a successful search in a unified interface. *(OR a user is performing an advanced search. See Gap G- )* |
+| Given | A user has performed a successful search in a unified interface. *(OR a user is performing an advanced search. See Gap G-01.)* |
 | When | The user views the result. |
 | And | The user chooses from available subjects/categories to limit the results. |
 | Then | The interface displays both ArchivesSpace and CollectionSpace records with records that contain the subject or category. |
 
 # **Error Scenarios** {#error-scenarios}
 
-## ES01: System cannot provide data (Search Path A)
+## ES01: One or both source systems cannot provide data
 
 | Step | Description |
 | :---- | :---- |
-| Given | The shared discovery layer is configured. |
-| When | The user performs a search.  |
-| And | At least one request fails because at least one system is unable to provide data at this time. |
-| Then | The group returns `"status": "error"` (or `"degraded"`) with `results: []` and an opaque message; the other group still renders. |
-
-## ES02: One source system is temporarily unavailable for harvest (Search Path B)
-
-### Search Path B
-
-| Step | Description |
-| :---- | :---- |
-| Given | The discovery layer harvests from both AS and CS on a schedule. |
-| When | One system's OAI-PMH endpoint is unavailable during a scheduled harvest. |
-| Then | The discovery layer continues to display previously harvested records from the unavailable system (stale data). |
-|  | A staleness indicator or 'last updated' timestamp is displayed on search results from that source.  |
-|  | The discovery layer administrator is notified of the harvest failure (mechanism TBD, see Gap G-08). |
-
-This error does not apply to search path A. In search path A, we will query individual systems live and take advantage of their caching.
+| Given | The shared discovery app is configured. |
+| When | The user performs a search. |
+| And | At least one upstream request fails because a source system is unable to provide data at this time. |
+| Then | That group returns `"status": "error"` (or `"degraded"`) with `results: []` and an opaque message; any successful group still renders. |
 
 # **Open Questions and Specification Gaps** {#open-questions-and-specification-gaps}
 
@@ -462,15 +413,13 @@ This error does not apply to search path A. In search path A, we will query indi
 
 | \# | Gap | Description | Owner |
 | :---- | :---- | :---- | :---- |
-| **G-01** | Search scope | The search is designed as a single search bar with a keyword search option. Should advanced search options be added? | Product Owner  |
+| **G-01** | Search scope | The search is designed as a single search bar with a keyword search option. Should advanced search options be added? | Product Owner |
 | **G-02** | [Result Card Schema Review](#intermediate-result-card-schema) | How does the data model look to you? Is there anything you would add or remove? (material type?) | Product Owner |
-| **G-04** | OAI-PMH identifier namespace and source system detection | How does the discovery layer know which records came from ArchivesSpace vs. CollectionSpace? Options: (a) distinct OAI set per source system, (b) OAI identifier prefix convention, or (c) a custom metadata field injected during harvest. A consistent convention must be agreed across both system configurations. | Developer |
-| **G-05** | Display labels and facet vocabulary review | The proposed record type display labels and facet values (see [Display Implementation Options](#display-implementation-options)) must be reviewed and approved by stakeholders, including end user representatives.  | Product Owner / UX / End Users |
-| **G-06** | ArchivesSpace record type scope | Please review the recommendation: Archival objects \+ digital objects | **ArchivesSpace** Product Owner, Developers  |
-| **G-07** | Related records display mechanism | How will subject-based or identifier-based relationships between AS and CS records surfaced to users?  Options: subject heading hyperlinks to a filtered search, a dedicated 'Related records' panel, or no explicit relationship display. Define the mechanism and its data requirements. | Product Owner / UX |
-| **G-08** | Harvest failure notification | How is the discovery layer administrator notified when harvesting from one source fails? This may be a feature of the discovery platform rather than AS/CS, but minimum error information (last successful harvest timestamp per source) should be surfaceable in the unified interface. | Discovery Admin / Developer |
+| **G-05** | Display labels and facet vocabulary review | The proposed record type display labels and facet values (see [Display Implementation Options](#display-implementation-options)) must be reviewed and approved by stakeholders, including end user representatives. | Product Owner / UX / End Users |
+| **G-06** | ArchivesSpace record type scope | Please review the recommendation: Archival objects \+ digital objects | **ArchivesSpace** Product Owner, Developers |
+| **G-07** | Related records display mechanism | How will subject-based or identifier-based relationships between AS and CS records be surfaced to users? Options: subject heading hyperlinks to a filtered search, a dedicated 'Related records' panel, or no explicit relationship display. Define the mechanism and its data requirements. | Product Owner / UX |
 | **G-10** | Archival hierarchy display in search results | How is the breadcrumb rendered? Is this nice to have or required? | **ArchivesSpace** Developer, Product Owner |
-| **G-11** | Thumbnail | How will the system identify and render thumbnails or digital object previews?Is this nice to have or required? | Consultants, Developers, Product Owners |
+| **G-11** | Thumbnail | How will the system identify and render thumbnails or digital object previews? Is this nice to have or required? | Consultants, Developers, Product Owners |
 
 ## Development Areas
 
@@ -485,12 +434,10 @@ This error does not apply to search path A. In search path A, we will query indi
 | D-A07 | Coarse source filter \+ optional hasMedia |  |
 | D-A08 | Partial-failure UX | One source down |
 | D-A09 | Deploy docs | Network allowlist for AS API; gateway URL; secrets |
-| D-B01+ | Path B harvest platform work | Only if product selects Path B; depends on C1 for CS |
 
 # **Review Questions** {#review-questions}
 
-1. Confirm **Path A** as the funded deliverable (vs configuring an existing Blacklight/etc.).  
-2. Confirm v1 types: **AS AO+DO**, **CS collection objects only**.  
-3. Approve **link-out only** (no unified detail page).  
-4. Provide a reference deploy (hostnames for AS API, PUI, CS gateway, public browser) for adapter spikes.  
-5. Choose the default layout Option: **grouped (A)** vs **unified (B)**.
+1. Confirm v1 types: **AS AO+DO**, **CS collection objects only**.  
+2. Approve **link-out only** (no unified detail page).  
+3. Provide a reference deploy (hostnames for AS API, PUI, CS gateway, public browser) for adapter spikes.  
+4. Choose the default layout Option: **grouped (A)** vs **unified (B)**.
