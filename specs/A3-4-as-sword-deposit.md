@@ -6,7 +6,7 @@ scenarios:
 issues:
   - https://github.com/lyrasisorghome/InteroperabilityProject/issues/45
   - https://github.com/lyrasisorghome/InteroperabilityProject/issues/52
-last_synced: 2026-07-30
+last_synced: 2026-08-10
 ---
 # **ArchivesSpace SWORD Deposits**
 
@@ -15,8 +15,8 @@ last_synced: 2026-07-30
 *SWORD-based deposit of Archival Files from ArchivesSpace*
 
 Document Status: DRAFT  
-Version: 0.9  
-Date: July 2026  
+Version: 0.10  
+Date: August 2026  
 Source Stories: [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) and [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52)  
 Project: LYRASIS Interoperability Project  
 Systems: ArchivesSpace SUI, ArchivesSpace PUI, DSpace REST API (7.x / DSpace 9.x contract), ArchivesSpace REST API
@@ -86,14 +86,14 @@ Key distinctions from the companion ArchivesSpace-DSpace linking specification (
 | :---- | :---- |
 | A-01 | Target **ArchivesSpace 3.x+** deployed as the standard multi-app stack (staff SUI \+ JSON backend \+ PUI \+ Solr). Feature ships as an **ArchivesSpace plugin**. |
 | A-02 | **SWORD v2** is the only protocol implemented in v0.1. A `SwordProtocolAdapter` interface allows a future v3 adapter without rewriting orchestration. |
-| A-03 | The target repository exposes a **Service Document URL** and ≥1 **Collection** accepting the configured deposit type (typically `application/pdf` / binary). |
+| A-03 | The target repository exposes a **Service Document URL** and ≥1 **Collection** accepting the configured deposit types (binary bitstreams per `accepted_formats`; see [Accepted File Formats](#accepted-file-formats)). |
 | A-04 | **ArchivesSpace does not persist deposited binaries.** Files are streamed from the browser through the plugin to the SWORD endpoint and held only transiently. Only the returned **item URL** (and optional edit IRI) are written to AS. |
 | A-05 | Deposit orchestration runs in the **staff frontend plugin**, which already holds an authenticated backend session, so binaries never transit the JSON backend API. |
 | A-06 | **Granularity is 1:1:1**: one uploaded file → one repository item → one Digital Object. The returned URI is recorded on that Digital Object in **both** its required **Identifier** (`digital_object_id`) and one **File Version** `file_uri` (A-19), whether the Digital Object is pre-existing or created inline. |
 | A-07 | The `file_uri` written to AS is the repository's **public item URL** (e.g. `{dspaceBaseUrl}/handle/{handle}`), because PUI end users and staff both click it. |
 | A-08 | **Authentication (v2)** is **HTTP Basic Auth** with a service credential configured per AS repository (parent G-01; per-user credentials deferred). |
 | A-09 | Deposit is **synchronous from the user's perspective** in v0.1. Even if the endpoint returns SWORD **In-Progress**, AS still writes the File Version immediately; staff manage visibility via existing **Publish?** and **Make Representative** controls. |
-| A-10 | **SWORD deposit metadata is a hard-coded AS → Dublin Core subset** read from the persisted **host record** (Resource or Archival Object; Mode B: the target child AO) and attached to the PDF deposit. v0.1 ships a **minimal code-based mapping** (at least `dc:title`); a fuller IR-specific mapping remains open (M-01 / G-05). No Admin field-mapping UI. |
+| A-10 | **SWORD deposit metadata is a hard-coded AS → Dublin Core subset** read from the persisted **host record** (Resource or Archival Object; Mode B: the target child AO) and attached to the **binary** deposit (any configured format). v0.1 ships a **minimal code-based mapping** (at least `dc:title`); a fuller IR-specific mapping remains open (M-01 / G-05). No Admin field-mapping UI. |
 | A-11 | **The target Digital Object may not be persisted at deposit time.** In the primary Archival Object flow, the "Create Digital Object" modal holds an *unsaved* record (verified 2026-07-19: no ID/URI until "Create and Link"). Therefore the deposit **must not** depend on a saved Digital Object: it obtains the `file_uri` and **populates the in-memory File Version row**; AS persists everything on the record's normal Save / "Create and Link". SWORD DC metadata still comes from the **persisted host record** (A-12). The deposit control is **not** injected on the standalone Digital Object edit screen (A-21). |
 | A-12 | **Dublin Core for the SWORD package is sourced from the persisted host record** (Modes A/C: Resource or Archival Object being edited; Mode B: the **target child Archival Object**), via a **map of DC field → AS value** (`HostRecordDcMapper`). **Exception — Mode C `dc:title`:** because Mode C deposits many files onto one host record, **`dc:title` (and the AS Digital Object Title) use each file's basename without extension** so IR items and Digital Objects are not identically titled after the host (A-17). All **other** DC fields still come from the host record. Modes A/B take `dc:title` from the host/child record like the other fields. See M-01. |
 | A-13 | **One binary per host record (Mode A/C) or per child (Mode B); the target records always pre-exist the deposit.** Staff create the Archival Objects first, then deposit a single file for each. In Mode A they iterate across the tree manually; in Mode B they populate many children in one action; in Mode C many files land on one host record. Each deposit is a single `DepositEntry`. |
@@ -178,7 +178,7 @@ Mode C preserves **one file → one repository item → one Digital Object** (st
 
 This document is the bridge from the behavior spec (`June 29 version of this doc`, which defines *what*: roles, config table, BS01–BS03, ES01–ES04, gaps G-01–G-10) to implementation planning (*which plugin, controllers, JSONModels, and client library would change*).
 
-**In scope for v0.1–v0.9:**
+**In scope for v0.1–v0.10:**
 
 1. ArchivesSpace deployment/plugin context and where HTTP requests land  
 2. **Host record \= a Resource or an Archival Object** (A-20): all three modes start from the staff edit view of either, since both expose the Instances group and the same tree  
@@ -187,22 +187,22 @@ This document is the bridge from the behavior spec (`June 29 version of this doc
 5. **Mode B** — an **"Upload and Link"** panel on the **host record** (Resource or AO) listing immediate children with one file input each, and a single action that deposits \+ creates \+ links a Digital Object per child (server-side)  
 6. **Mode C** — an **"Upload Digital Objects"** button in the Instances section of the **host record** (Resource or AO) that multi-selects files and creates one Digital Object per file (Title \= filename, Identifier \= returned URI, plus one File Version — A-19), linked to the host record and saved with it  
 7. The `DepositEntry` contract (one file → one repository item); `DepositBatch` \= N × `DepositEntry`, realized by Modes B and C (fail-forward, G-07)  
-8. **Hard-coded AS → Dublin Core** for PDF deposits via `HostRecordDcMapper` (map of DC field → AS value from the host/child record; sample shows `dc:title`; Mode C overrides `dc:title` with file basename; M-01)  
+8. **Hard-coded AS → Dublin Core** for binary deposits via `HostRecordDcMapper` (map of DC field → AS value from the host/child record; sample shows `dc:title`; Mode C overrides `dc:title` with file basename; M-01)  
 9. A version-abstracted SWORD client (v2 now; v3 adapter stub)  
 10. Two write-back paths: **in-form population** (Modes A and C) and **server-side create \+ link** (Mode B)  
 11. Configuration model at the repository level  
 12. Error handling mapped to parent ES01–ES04, including partial-batch failure for Modes B and C
 
-**Out of scope for v0.1–v0.9 (deferred or excluded):**
+**Out of scope for v0.1–v0.10 (deferred or excluded):**
 
 - **Standalone Digital Object edit views as an entry point** (v0.8, D-17): the deposit controls are **not** shown on the `digital_objects` controller. Staff editing a Digital Object directly still get the native "Add File Version" only. The feature initiates exclusively from a Resource or Archival Object (A-20 / A-21).  
 - **Digital Object Components** are excluded entirely (v0.8, D-17): no deposit control, no create/link, no Mode B/C handling for DOCs.  
 - **Multiple File Versions on a single Digital Object from one multi-select** (de-prioritized: Mode C multi-select yields *one Digital Object per file*, not many File Versions on one Digital Object)  
 - The multi-page **deposit wizard** with **drag-and-drop** file→archival-object mapping described in parent BS02/BS03 (*explicitly deferred at client direction*). Mode B covers one file per immediate child; Mode C covers many files onto one AO; the free-form drag-drop mapping across arbitrary tree depth remains deferred, but reuses the same `DepositBatch` machinery.  
 - **Non-immediate descendants**: Mode B lists only the parent's **direct** children (A-15); deep/recursive selection is deferred.  
-- Admin-configurable or per-site AS → IR field-mapping UI (date conversion, multi-value flattening, etc.) — v0.1 ships a **hard-coded minimal** AS → Dublin Core subset for PDF deposits (M-01); sites needing more edit the mapper in code  
+- Admin-configurable or per-site AS → IR field-mapping UI (date conversion, multi-value flattening, etc.) — v0.1 ships a **hard-coded minimal** AS → Dublin Core subset for binary deposits (M-01); sites needing more edit the mapper in code  
 - Fuller IR-specific AS → DC mapping beyond the v0.1 subset (**open**, pending ArchivesSpace \+ DSpace team input; see G-05 / M-01)  
-- METS / packaged ZIP deposit (RoR SWORD clients do not support METS package construction in this revision; PDF binary \+ Atom/DC only)  
+- **METS package construction / SWORD `Packaging` METS SIP** (deferred): uploading a `.zip` as an ordinary **binary** bitstream is allowed when configured in `accepted_formats`; constructing or validating a METS SIP, or setting a METS packaging URI, is out of scope for this revision  
 - SWORD v3 implementation  
 - Re-deposit / update-in-place of previously deposited content (G-10)  
 - Changes to DSpace-side ingest workflow/approval configuration
@@ -353,7 +353,7 @@ plugins/sword_deposit/
     archival_object_children.rb          # Mode B: enumerate parent's immediate children (tree API)
     metadata/
       host_record_dc_mapper.rb           # hard-coded AS host/child record → Dublin Core map (M-01)
-      deposit_package.rb                  # PDF binary + Atom/DC EntryPart wrapper
+      deposit_package.rb                  # binary bitstream + Atom/DC EntryPart wrapper
     sword/
       sword_protocol_adapter.rb          # interface: service_document, deposit, status
       sword_v2_client_adapter.rb         # wraps sword2ruby OR native Net::HTTP
@@ -365,7 +365,7 @@ plugins/sword_deposit/
 
 ## Class responsibilities (sketch)
 
-**`HostRecordDcMapper.from(host_ref)`** — hard-coded AS host/child record → Dublin Core map for PDF deposits (M-01). Sample shows **title only**; other fields from the [AS → Dublin Core mapping](#as-→-dublin-core-mapping-(pdf-deposits)) table follow the same pattern. Omit a DC element when the AS source value is absent. **Mode C** starts from this map, then **overrides `dc:title`** with each file's basename (A-17) so multi-file deposits are not identically titled.
+**`HostRecordDcMapper.from(host_ref)`** — hard-coded AS host/child record → Dublin Core map for binary deposits (M-01). Sample shows **title only**; other fields from the [AS → Dublin Core mapping](#as-→-dublin-core-mapping-(binary-deposits)) table follow the same pattern. Omit a DC element when the AS source value is absent. **Mode C** starts from this map, then **overrides `dc:title`** with each file's basename (A-17) so multi-file deposits are not identically titled.
 
 ```
 # Returns a map of DC field => AS metadata value, e.g. { "dc:title" => "...", "dc:creator" => "...", ... }
@@ -405,12 +405,12 @@ def deposit
 end
 ```
 
-**`SwordDepositService`** — the contract everything hangs off. Note it returns the `file_uri` and does **not** write to AS (A-11): persistence is the native form save. `dc_fields` is the Dublin Core map attached to the PDF deposit.
+**`SwordDepositService`** — the contract everything hangs off. Note it returns the `file_uri` and does **not** write to AS (A-11): persistence is the native form save. `dc_fields` is the Dublin Core map attached to the binary deposit.
 
 ```
 # DepositEntry: one file -> one item -> one file_version row (1:1:1)
 def deposit_entry(file, dc_fields:, collection_href:)
-  package = DepositPackage.pdf(file, dc_fields: dc_fields)   # PDF + Atom EntryPart DC (M-01)
+  package = DepositPackage.build(file, dc_fields: dc_fields)   # binary + Atom EntryPart DC (M-01)
   res     = adapter.deposit(collection_href || cfg.default_collection, package, cfg) # SWORD POST
   audit_log.record(file, cfg, collection_href, dc_fields, res)
   DepositResult.ok(file.original_filename, res.item_url)   # public handle URL (A-07)
@@ -429,17 +429,17 @@ def deposit_batch(files, dc_fields:, collection_href:)
 end
 ```
 
-**`DepositPackage.pdf`** — builds the SWORD binary deposit with Dublin Core from the map (title sample; other DC keys follow the same pattern):
+**`DepositPackage.build`** — builds the SWORD binary deposit with Dublin Core from the map (title sample; other DC keys follow the same pattern):
 
 ```
-def self.pdf(file, dc_fields:)
-  # Content-Type: application/pdf; Content-Disposition filename; optional Slug / In-Progress.
+def self.build(file, dc_fields:)
+  # Content-Type from the file; Content-Disposition filename; optional Slug / In-Progress.
   # Attach Atom metadata from dc_fields — sample shows title only:
   #   if (title = dc_fields['dc:title']).present?
   #     entry.add_dublin_core('title', title)   # sword2ruby-style or native Atom builder
   #   end
   # Native Net::HTTP and sword2ruby both can carry an Atom entry alongside the binary;
-  # METS packaging is out of scope for this revision.
+  # METS packaging (SWORD Packaging URI / METS SIP construction) is out of scope for this revision.
 end
 ```
 
@@ -644,7 +644,7 @@ Two tiers, matching the parent Configuration Fields table and AS conventions.
 | :---- | :---- | :---- |
 | `AppConfig[:sword_deposit_enabled]` | `true` | Master switch; hides control, rejects endpoint when false (ES01) |
 | `AppConfig[:sword_deposit_max_upload_bytes]` | `104857600` | Per-file upload cap |
-| `AppConfig[:sword_deposit_allowed_mime_types]` | `["application/pdf"]` | Upload validation (parent notes "mostly PDFs") |
+| `AppConfig[:sword_deposit_allowed_mime_types]` | `["application/pdf", "application/zip"]` | Default allow-list when a repository leaves `accepted_formats` blank; see [Accepted File Formats](#accepted-file-formats) |
 | `AppConfig[:sword_deposit_client]` | `native` | `native` (Net::HTTP) or `sword2ruby` |
 | `AppConfig[:sword_deposit_default_protocol]` | `v2` | Adapter default |
 
@@ -662,7 +662,8 @@ Reached via **Repository management → SWORD Deposit Settings** (parent §Confi
 | `username` | string | Yes | Service credential |
 | `password` | secret | Yes | Encrypted at rest — never logged (G-01, ES03) |
 | `default_collection_href` | URL | No | Pre-selected collection from Service Document |
-| `default_package_format` | enum | Yes | `pdf` / binary (v0.1); `zip`/`mets` deferred |
+| `accepted_formats` | string | No | Comma-separated extensions and/or MIME types used to build file-input `accept` attributes and validate uploads. See [Accepted File Formats](#accepted-file-formats). |
+| `default_package_format` | enum | Yes | `binary` (v0.1); METS packaging deferred |
 
 **Save / test actions** (parent BS01): **Test connection** GETs the Service Document, validates auth, and populates the collection list; failures surface to the admin.
 
@@ -678,7 +679,7 @@ The control lives **in the File Versions subrecord section of the Create Digital
 | :---- | :---- |
 | Entry contexts | **Only** the "Create Digital Object" modal opened from a **Resource or Archival Object** Instances group. **Not** shown on the standalone Digital Object edit screen; **Digital Object Components are out of scope** (A-21 / D-17). |
 | **"Upload File Version"** button | Rendered next to "Add File Version" in that modal when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
-| Hidden file input | `<input type="file" accept=".pdf">` — **single file** (A-13; no `multiple`). |
+| Hidden file input | `<input type="file" accept=".pdf,.zip">` — **single file** (A-13; no `multiple`). `accept` is illustrative; build it from `accepted_formats` (see [Accepted File Formats](#accepted-file-formats)). |
 | Collection select | Shown only if \>1 collection or no default; else uses `default_collection_href`; "None" allowed (parent BS02). |
 | Progress \+ result | Upload progress; on success, **set the Digital Object Identifier** (required, canonical URI) and **populate a File Version row** (`file_uri`, `publish` checked) exactly as if added manually (A-19); on failure, inline error (ES02/ES03/ES04). |
 | Save semantics | The Identifier and the deposited File Version are populated into the in-memory form and persisted on **"Create and Link"** (A-11). No auto-save is required; see D-03. |
@@ -692,7 +693,7 @@ A plugin-injected panel on the host record (proposed placement: a new section un
 | Element | Behavior |
 | :---- | :---- |
 | Panel visibility | Shown on Resources and Archival Objects that have children when SWORD is enabled for the repository (ES01 otherwise hidden/disabled with tooltip). |
-| Child rows | One row per immediate child: child title/label \+ a single `<input type="file" accept=".pdf">` (one file per child, A-15). Children with no file selected are skipped. |
+| Child rows | One row per immediate child: child title/label \+ a single `<input type="file" accept=".pdf,.zip">` (one file per child, A-15). `accept` is illustrative; build it from `accepted_formats` (see [Accepted File Formats](#accepted-file-formats)). Children with no file selected are skipped. |
 | Collection select | One selector for the batch (per-child override deferred); default from config (D-06). |
 | **"Upload and Link"** button | Submits all chosen `{ child → file }` pairs to `POST /plugins/sword_deposit/deposit_and_link`. |
 | Progress \+ result | Per-child status (pending → deposited → linked, or error). On success, the row shows a link to the new Digital Object and the repository item; on failure, an inline, retryable error (ES02/ES03/ES04). |
@@ -707,20 +708,30 @@ A plugin-injected button in the **Instances** section of the host record (Resour
 | Element | Behavior |
 | :---- | :---- |
 | **"Upload Digital Objects"** button | Rendered next to "Add Digital Object" in the host record's Instances section when SWORD is enabled (ES01 hides/disables otherwise, with tooltip). |
-| File input | `<input type="file" accept=".pdf" multiple>` — **multi-select** (A-17). |
+| File input | `<input type="file" accept=".pdf,.zip" multiple>` — **multi-select** (A-17). `accept` is illustrative; build it from `accepted_formats` (see [Accepted File Formats](#accepted-file-formats)). |
 | Collection select | One selector for the whole selection; default from config (D-06). |
 | Progress \+ result | Per-file progress; on success, **add a digital-object instance** to the host record form (Title, Identifier, and one File Version pre-filled — A-19); on failure, inline per-file error (ES02/ES03/ES04) with the other files unaffected. |
 | Persistence | The new Digital Objects are populated **in-form** and persisted on the host record's native **Save** (A-18). Multi-nested create should be verified (D-13); server-side pre-create is the fallback. |
+
+## Accepted File Formats {#accepted-file-formats}
+
+The `accept=".pdf,.zip"` values in the Mode A/B/C sketches are **examples** showing how to list multiple types in an HTML file input. Implementations **must** build each mode's `accept` attribute (and server-side upload validation) from the repository's Tier 2 **`accepted_formats`** setting (falling back to Tier 1 `AppConfig[:sword_deposit_allowed_mime_types]` when blank).
+
+`accepted_formats` is a comma-separated string of **extensions** (e.g. `.pdf`, `.zip`) and/or **MIME types** (e.g. `application/pdf`, `application/zip`). Values should be a **subset** of what the target IR can ingest. For the DSpace reference deployment, use formats from DSpace's bitstream format registry — do not invent a parallel catalog:
+
+- [DSpace `bitstream-formats.xml`](https://github.com/DSpace/DSpace/blob/main/dspace/config/registries/bitstream-formats.xml)
+
+Uploading a `.zip` deposits it as an ordinary **binary** bitstream. **METS** SIP construction and SWORD **`Packaging`** for METS remain out of scope (see Out of scope).
 
 **i18n:** add keys under `frontend/locales/en.yml` following AS locale conventions.
 
 # **Metadata and packaging** {#metadata-and-packaging}
 
-PDF is the only deposit type in this revision. Descriptive metadata for the IR is read from the **persisted ArchivesSpace host record** (or Mode B child AO) as a **hard-coded Dublin Core subset** and attached to the binary deposit — the same pattern as V1's PDF path, without a Java SWORD client or METS packaging.
+Descriptive metadata for the IR is read from the **persisted ArchivesSpace host record** (or Mode B child AO) as a **hard-coded Dublin Core subset** and attached to the **binary** deposit — the same pattern as V1's PDF path (hard-coded DC on the file deposit), without METS packaging. Allowed file types are configured per repository ([Accepted File Formats](#accepted-file-formats)); they are not limited to PDF.
 
 ## v0.1 approach
 
-- **Deposit type:** `application/pdf` binary — a single file `POST` to the Collection IRI (`Content-Type: application/pdf`, `Content-Disposition` carrying the filename), plus an Atom entry carrying Dublin Core from `HostRecordDcMapper`. No packaging URI.  
+- **Deposit type:** **binary** — a single file `POST` to the Collection IRI (`Content-Type` from the file, `Content-Disposition` carrying the filename), plus an Atom entry carrying Dublin Core from `HostRecordDcMapper`. No packaging URI. Formats follow `accepted_formats` (e.g. PDF, ZIP as ordinary bitstreams).  
 - **Hard-coded AS → DC map (M-01):** the plugin reads a **small code-based set** of fields from the host/child record and passes a **map of DC field → AS value** into `SwordDepositController` / `SwordDepositService`. Sample code shows **title only**; other mapped fields follow the same pattern. This is **not** an Admin field-mapping UI — adding fields means editing `HostRecordDcMapper`.  
 - **Mode C title exception:** for multi-file deposits onto one host record, **`dc:title` and the AS Digital Object Title** both use **filename without extension** (A-17) so IR items / Digital Objects are not identically named after the host. All **other** DC fields still come from the host record. Modes A/B take `dc:title` from the host/child record.  
 - **Starting reference:** [`as-dc-mapping`](https://archivesspace.org/wp-content/uploads/2019/06/DC-OAI-Export-Mapping-20190610.xlsx) informed the subset below but was authored for **export**, not SWORD deposit. Confirm field-by-field with stakeholders before expanding (G-05).
@@ -736,9 +747,9 @@ Source data:
 * [DSpace](https://wiki.lyrasis.org/spaces/DSDOC10x/pages/408945794/Metadata+and+Bitstream+Format+Registries)  
 * [ASpace](https://archivesspace.org/wp-content/uploads/2019/06/DC-OAI-Export-Mapping-20190610.xlsx)
 
-### AS → Dublin Core mapping (PDF deposits) {#as-→-dublin-core-mapping-(pdf-deposits)}
+### AS → Dublin Core mapping (binary deposits) {#as-→-dublin-core-mapping-(binary-deposits)}
 
-For every PDF deposit, ArchivesSpace reads a **small hard-coded set** of properties from the selected host record (Modes A/C) or target child Archival Object (Mode B) and attaches them to the SWORD deposit as Dublin Core. Direction: **from AS to DC for deposit**. **Mode C** overrides **`dc:title`** with each file's basename; other DC fields still come from the host.
+For every binary deposit, ArchivesSpace reads a **small hard-coded set** of properties from the selected host record (Modes A/C) or target child Archival Object (Mode B) and attaches them to the SWORD deposit as Dublin Core. Direction: **from AS to DC for deposit**. **Mode C** overrides **`dc:title`** with each file's basename; other DC fields still come from the host.
 
 | ArchivesSpace source | Dublin Core (deposit) | Notes |
 | :---- | :---- | :---- |
@@ -754,7 +765,7 @@ For every PDF deposit, ArchivesSpace reads a **small hard-coded set** of propert
 - Omit a DC element when the AS source value is absent rather than sending an empty element.  
 - Multi-valued AS fields (e.g. creators) may yield repeated DC elements; do not invent an Admin UI to configure this in v0.1.  
 - Mode C: build `dc_base = HostRecordDcMapper.from(host_ref)`, then per file `dc_fields = dc_base.merge("dc:title" => File.basename(filename, ".*"))`.  
-- A fuller IR-specific mapping remains Gap **G-05** / **M-01**; v0.1 implements this **minimal DC subset** for PDF deposits only.
+- A fuller IR-specific mapping remains Gap **G-05** / **M-01**; v0.1 implements this **minimal DC subset** for binary deposits.
 
 ## AS record fields written per mode
 
@@ -772,8 +783,8 @@ Every mode writes the returned URI to **both** Digital Object fields (A-19): the
 
 | Mode | When | Notes |
 | :---- | :---- | :---- |
-| **`pdf` / binary** (v0.1) | Collection accepts `application/pdf` | PDF \+ hard-coded Atom/DC from host record; only mode in this revision |
-| `zip` / `mets` (future) | Deferred | RoR clients here do not construct METS packages; may be described later if a developer extends the adapter |
+| **`binary`** (v0.1) | Collection accepts the file MIME / format | Bitstream \+ hard-coded Atom/DC from host record; formats from `accepted_formats` |
+| `mets` packaging (future) | Deferred | Constructing / declaring a METS SIP via SWORD `Packaging` may be described later; uploading `.zip` as **binary** is already allowed when configured |
 
 # **SWORD v2 protocol surface (implementation mapping)** {#sword-v2-protocol-surface-(implementation-mapping)}
 
@@ -885,7 +896,7 @@ Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disp
 
 | ID | Question | Options | Default recommendation |
 | :---- | :---- | :---- | :---- |
-| M-01 | **Descriptive metadata mapping AS → repository** | binary-only vs hard-coded DC subset vs Admin mapping UI; and *which* AS record supplies it | **Hard-coded minimal AS → DC subset** via `HostRecordDcMapper` from the persisted **host record** (Modes A/C) or **child AO** (Mode B) — A-12; sample code shows `dc:title` only; **Mode C overrides `dc:title` with file basename** (A-17); Admin on/off toggle for sending DC; no field-mapping UI; expand mapping later with AS+DSpace teams (G-05). METS deferred. |
+| M-01 | **Descriptive metadata mapping AS → repository** | binary-only vs hard-coded DC subset vs Admin mapping UI; and *which* AS record supplies it | **Hard-coded minimal AS → DC subset** via `HostRecordDcMapper` from the persisted **host record** (Modes A/C) or **child AO** (Mode B) — A-12; sample code shows `dc:title` only; **Mode C overrides `dc:title` with file basename** (A-17); Admin on/off toggle for sending DC; no field-mapping UI; expand mapping later with AS+DSpace teams (G-05). METS packaging deferred; binary formats via `accepted_formats`. |
 | D-01 | Client library | `sword2ruby` vs native `Net::HTTP` | **Native client**, `sword2ruby` as reference |
 | D-02 | Config store | Repository preference vs plugin backend model vs JSON file | **Plugin-managed per-repository record** |
 | D-03 | When File Versions persist | On record Save/"Create and Link" vs immediate auto-save on deposit | **Persist on Save / "Create and Link"** — *required* for the primary AO flow, where the Digital Object is unsaved at deposit time (A-11); auto-save is only viable for a pre-existing Digital Object |
@@ -915,7 +926,7 @@ Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disp
 | **4 — Batch Upload-and-Link (Mode B)** | "Upload and Link" panel listing immediate children of a Resource or AO (tree API); `deposit_and_link_batch` \+ `DigitalObjectLinker` (create DO with Identifier \+ File Version, link per child); per-child DC from child AO; per-child report; fail-forward | frontend \+ `lib` |
 | **5 — Multi-DO Upload (Mode C)** | "Upload Digital Objects" button (multi-select) in the Resource/AO Instances; `deposit_digital_objects_batch` \+ host-record DC with **per-file `dc:title`/AS Title \= basename** \+ `DigitalObjectInstanceBuilder`; in-form instance population; verify multi-nested create (D-13) | frontend \+ `lib` |
 | **6 — Hardening** | ES01–ES05, partial-batch fail-forward, orphaned-item logging, audit log, credential encryption | plugin-wide |
-| **7 — Metadata (M-01)** | Implement `HostRecordDcMapper` fields beyond title; admin on/off for DC; confirm date/creator mapping with AS+DSpace teams (G-05). METS / packaged deposit deferred | `lib/metadata` |
+| **7 — Metadata (M-01)** | Implement `HostRecordDcMapper` fields beyond title; admin on/off for DC; confirm date/creator mapping with AS+DSpace teams (G-05). METS packaging deferred; wire `accepted_formats` to UI \+ validation | `lib/metadata` |
 | **8 — Wizard (deferred)** | Deep/drag-drop file→archival-object mapping over the same `DepositBatch` \+ create-and-link machinery | frontend |
 | **9 — SWORD v3 (future)** | `SwordV3ClientAdapter`, OAuth | `lib/sword` |
 
@@ -942,3 +953,4 @@ Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disp
 | 0.7-draft | 2026-07-20 | **Generalized the starting point to a Resource *or* an Archival Object** (client ask). Introduced the **"host record"** concept: both record types expose the same Instances group and tree and can carry digital-object instances, so all three modes work identically from either (A-20, D-16). The only type-dependent behavior is Mode B's *immediate children* (Resource → top-level AOs; AO → child AOs — A-15). Threaded "host record" through the three-modes table, Mode A/B/C narratives and UI sections, actors, URL shapes (added Resource edit \+ resource tree root), areas-touched (`resource`/`archival_object` JSONModel), reuse map, controller/service sketches (`host_ref`), and all three data-flow diagrams. Noted DO/DOC remain Mode A subrecord-only entry points. |
 | 0.8-draft | 2026-07-20 | **Confined the feature to Resource and Archival Object edit views** (client ask). Deposit controls are **not** shown on the standalone Digital Object edit screen; **Digital Object Components are out of scope entirely** (A-21 / D-17). Mode A's "Upload File Version" injection is scoped to the Resource/AO Create Digital Object modal (shared File Versions form requires an explicit context gate). **Sandbox-confirmed** that a Resource has the same Instances options and shows AO children in the top tree (A-20). Updated purpose, in/out-of-scope, UI entry contexts, data-flow notes, epics, and decisions. |
 | 0.9-draft | 2026-07-30 | **Hard-coded AS → Dublin Core for PDF deposits** (aligned with V1 pattern): `HostRecordDcMapper` builds a DC field → AS value map from the persisted host/child record and passes it into `SwordDepositController` / `deposit_entry` (sample shows `dc:title` only). **Mode C:** `dc:title` and AS Digital Object Title use **per-file basename**; all other DC fields still come from the host record. METS / packaged deposit deferred (RoR client limitation). Updated A-10/A-12/A-17, class sketches, metadata section, M-01, and epics. |
+| 0.10-draft | 2026-08-10 | **Any configured binary format** (not PDF-only): Tier 2 `accepted_formats`; Mode A/B/C file inputs use illustrative `accept=".pdf,.zip"` built from config; [Accepted File Formats](#accepted-file-formats) links DSpace `bitstream-formats.xml`. Renamed `DepositPackage.pdf` → `DepositPackage.build`. METS **packaging** still out of scope; `.zip` as an ordinary binary bitstream is allowed when configured. |
