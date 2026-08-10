@@ -15,7 +15,7 @@ last_synced: 2026-08-10
 *SWORD-based deposit of Archival Files from ArchivesSpace*
 
 Document Status: DRAFT  
-Version: 0.10  
+Version: 0.11  
 Date: August 2026  
 Source Stories: [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) and [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52)  
 Project: LYRASIS Interoperability Project  
@@ -50,6 +50,8 @@ Systems: ArchivesSpace SUI, ArchivesSpace PUI, DSpace REST API (7.x / DSpace 9.x
 [Behavior Scenarios](#behavior-scenarios)
 
 [Error Scenarios](#error-scenarios)
+
+[Performance and Scalability](#performance-and-scalability)
 
 [Open Questions and Specification Gaps](#open-questions-and-specification-gaps)
 
@@ -890,6 +892,16 @@ Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disp
 | — | **Partial batch failure** (parent G-07, Mode B) | **Fail-forward:** children that deposited \+ created \+ linked show success; failed children keep their file input for retry, others are unaffected | Consistent with A1-2 `LinkBatch` semantics; per-child result in the report |
 | ES05 | **Deposit succeeded but AS create/link failed** (Mode B) | Report the child as failed with a clear message; offer retry | **Repository item is orphaned**; log the Edit-IRI for cleanup. Default is fail-forward, not rollback (D-12) |
 
+# **Performance and Scalability** {#performance-and-scalability}
+
+This plugin adds a staff-initiated deposit path; it does not introduce background harvest traffic, global search load, or long-running AS-side processing. Impact on ArchivesSpace performance and scalability should remain modest.
+
+* **Transit path.** Uploaded files travel through ArchivesSpace (the staff frontend plugin holding the authenticated session) to the Institutional Repository (IR) over SWORD. Binaries are held only transiently in AS (A-04/A-05); AS does not store deposited files as its own bitstreams.  
+* **Throughput.** Deposit rates track **individual staff usage** and client/network **upload speeds**, not a shared AS indexing or harvest pipeline. Concurrent deposits are bounded by how many staff users deposit at once.  
+* **Mode B batching.** Mode B may deposit several children in one action. Implementations **may** sequence or otherwise optimize those uploads asynchronously relative to browser and ArchivesSpace server sessions (e.g. one-file-at-a-time with progressive UI updates) so a long batch does not monopolize a single request. Fail-forward reporting (G-07) still applies.  
+* **IR In-Progress.** If DSpace (or another IR) returns SWORD **In-Progress** because of load or slow ingest on its side, that status does **not** degrade ArchivesSpace operation: AS records the returned URI and continues (A-09 / D-07). AS does not wait on IR-side ingest completion.  
+* **Overall.** The feature should **not dramatically affect** ArchivesSpace performance or scalability under normal staff-deposit workloads. Capacity planning remains dominated by file size, network path to the IR, and IR ingest behavior rather than by AS core services.
+
 # **Open Questions and Specification Gaps** {#open-questions-and-specification-gaps}
 
 ## Open decisions (for client / stakeholder feedback)
@@ -954,3 +966,4 @@ Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disp
 | 0.8-draft | 2026-07-20 | **Confined the feature to Resource and Archival Object edit views** (client ask). Deposit controls are **not** shown on the standalone Digital Object edit screen; **Digital Object Components are out of scope entirely** (A-21 / D-17). Mode A's "Upload File Version" injection is scoped to the Resource/AO Create Digital Object modal (shared File Versions form requires an explicit context gate). **Sandbox-confirmed** that a Resource has the same Instances options and shows AO children in the top tree (A-20). Updated purpose, in/out-of-scope, UI entry contexts, data-flow notes, epics, and decisions. |
 | 0.9-draft | 2026-07-30 | **Hard-coded AS → Dublin Core for PDF deposits** (aligned with V1 pattern): `HostRecordDcMapper` builds a DC field → AS value map from the persisted host/child record and passes it into `SwordDepositController` / `deposit_entry` (sample shows `dc:title` only). **Mode C:** `dc:title` and AS Digital Object Title use **per-file basename**; all other DC fields still come from the host record. METS / packaged deposit deferred (RoR client limitation). Updated A-10/A-12/A-17, class sketches, metadata section, M-01, and epics. |
 | 0.10-draft | 2026-08-10 | **Any configured binary format** (not PDF-only): Tier 2 `accepted_formats`; Mode A/B/C file inputs use illustrative `accept=".pdf,.zip"` built from config; [Accepted File Formats](#accepted-file-formats) links DSpace `bitstream-formats.xml`. Renamed `DepositPackage.pdf` → `DepositPackage.build`. METS **packaging** still out of scope; `.zip` as an ordinary binary bitstream is allowed when configured. |
+| 0.11-draft | 2026-08-10 | Added **Performance and Scalability**: binary transit through AS to the IR; rates tied to staff usage/upload speed; optional Mode B async sequencing; IR **In-Progress** does not affect AS (A-09); overall modest impact on AS. |
