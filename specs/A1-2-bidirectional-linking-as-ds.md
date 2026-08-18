@@ -868,6 +868,34 @@ See mockup: [images/A1-2-dspace-linking-new-links-mockup.png](images/A1-2-dspace
 | Resources \> Archival Object \> Instances | DSpace Linking | Same section; children = that AO's immediate children |
 | Digital Object (standalone) | — | **Out of scope** — no DSpace Linking injection |
 
+# **Other Requirements**
+
+## Documentation
+
+Documentation for this feature should include:
+* Troubleshooting
+* Governance, support, and contact information
+* Accessibility features and compliance
+* Reference documentation, such as field definitions
+
+The documentation may include screenshots and examples.
+
+## Governance
+
+The feature design should be reviewed, further edited, and if agreed upon, formally accepted by the ArchivesSpace development team.
+
+Maintenance of this feature after the implementation phase will fall to the ArchivesSpace development team.
+
+## Error Reporting
+
+Errors are reported in ArchivesSpace server logs.
+
+## Performance and Scalability
+
+The feature will induce minimal strain on ArchivesSpace.
+
+If many users search via Mode A, typeahead, the DSpace endpoint may take higher transactions per second (TPS).
+
 # **Open Questions and Specification Gaps**
 
 | \# | Functional Areas | Description | Who |
