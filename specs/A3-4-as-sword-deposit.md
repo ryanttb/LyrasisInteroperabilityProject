@@ -6,7 +6,7 @@ scenarios:
 issues:
   - https://github.com/lyrasisorghome/InteroperabilityProject/issues/45
   - https://github.com/lyrasisorghome/InteroperabilityProject/issues/52
-last_synced: 2026-08-10
+last_synced: 2026-08-21
 ---
 # **ArchivesSpace SWORD Deposits**
 
@@ -15,7 +15,7 @@ last_synced: 2026-08-10
 *SWORD-based deposit of Archival Files from ArchivesSpace*
 
 Document Status: DRAFT  
-Version: 0.11  
+Version: 0.12  
 Date: August 2026  
 Source Stories: [A3](https://github.com/lyrasisorghome/InteroperabilityProject/issues/45) and [A4](https://github.com/lyrasisorghome/InteroperabilityProject/issues/52)  
 Project: LYRASIS Interoperability Project  
@@ -160,7 +160,7 @@ To populate many children in one pass, the plugin adds an **"Upload and Link"** 
 4. For every child with a chosen file, the plugin **deposits the file via SWORD**, then **creates a Digital Object** (Identifier \= returned URI, plus a single File Version `file_uri` \= same URI — A-19) and **links it to that child Archival Object** as a digital-object instance.  
 5. A per-child result summary reports success/failure; failures are **fail-forward** (successful children are created and linked; failed children are listed for retry — parent G-07).
 
-Mode B still honors **1:1:1** (one file → one Digital Object with one File Version → one child AO) and **A-13** (children pre-exist). It does **not** attach multiple binaries to a single child, and it is **not** the deferred drag-and-drop wizard (see Out of scope).
+Mode B still honors **1:1:1** (one file → one Digital Object with one File Version → one child AO) and **A-13** (children pre-exist). It does **not** attach multiple binaries to a single child, and it is **not** the deferred deep / free-form drag-and-drop mapping (see Out of scope).
 
 ### Mode C — batch "Upload Digital Objects" (host record: Resource or Archival Object)
 
@@ -178,7 +178,7 @@ Mode C resembles the original v0.1 multi-select idea, but each selected file bec
 
 Mode C preserves **one file → one repository item → one Digital Object** (still 1:1). It **reintroduces multi-select** — but only in the sense of *many files → many Digital Objects on one host record*; attaching many File Versions to a single Digital Object remains out of scope (each Digital Object gets exactly one File Version, mirroring its Identifier). Because the host record is the one open in the editor, persistence rides its native **Save** (like Mode A's in-form population, A-11/A-18).
 
-This document is the bridge from the behavior spec (`June 29 version of this doc`, which defines *what*: roles, config table, BS01–BS03, ES01–ES04, gaps G-01–G-10) to implementation planning (*which plugin, controllers, JSONModels, and client library would change*).
+This document is the bridge from the behavior baseline (`June 29 version of this doc`: roles, config table, early BS/ES drafts, gaps G-01–G-10) to implementation planning (*which plugin, controllers, JSONModels, and client library would change*). Behavior scenarios BS01–BS04 below supersede the older multi-page deposit flow and match Modes A/B/C.
 
 **In scope for v0.1–v0.10:**
 
@@ -200,7 +200,7 @@ This document is the bridge from the behavior spec (`June 29 version of this doc
 - **Standalone Digital Object edit views as an entry point** (v0.8, D-17): the deposit controls are **not** shown on the `digital_objects` controller. Staff editing a Digital Object directly still get the native "Add File Version" only. The feature initiates exclusively from a Resource or Archival Object (A-20 / A-21).  
 - **Digital Object Components** are excluded entirely (v0.8, D-17): no deposit control, no create/link, no Mode B/C handling for DOCs.  
 - **Multiple File Versions on a single Digital Object from one multi-select** (de-prioritized: Mode C multi-select yields *one Digital Object per file*, not many File Versions on one Digital Object)  
-- The multi-page **deposit wizard** with **drag-and-drop** file→archival-object mapping described in parent BS02/BS03 (*explicitly deferred at client direction*). Mode B covers one file per immediate child; Mode C covers many files onto one AO; the free-form drag-drop mapping across arbitrary tree depth remains deferred, but reuses the same `DepositBatch` machinery.  
+- **Deep / free-form drag-and-drop** file→archival-object mapping across arbitrary tree depth (*explicitly deferred at client direction*). Mode B covers one file per **immediate** child; Mode C covers many files onto one host record; deeper mapping remains deferred but would reuse the same `DepositBatch` machinery.  
 - **Non-immediate descendants**: Mode B lists only the parent's **direct** children (A-15); deep/recursive selection is deferred.  
 - Admin-configurable or per-site AS → IR field-mapping UI (date conversion, multi-value flattening, etc.) — v0.1 ships a **hard-coded minimal** AS → Dublin Core subset for binary deposits (M-01); sites needing more edit the mapper in code  
 - Fuller IR-specific AS → DC mapping beyond the v0.1 subset (**open**, pending ArchivesSpace \+ DSpace team input; see G-05 / M-01)  
@@ -225,7 +225,7 @@ This mirrors the `LinkEntry`/`LinkBatch` and `create_digital_object` patterns fr
 
 | Actor | Role |
 | :---- | :---- |
-| **AS Administrator** | Configures per-repository SWORD endpoint(s), credentials, default collection, protocol version, master enable (parent BS01). |
+| **AS Administrator** | Configures per-repository SWORD endpoint(s), credentials, default collection, protocol version, master enable (BS01). |
 | **AS Staff User (Mode A)** | Selects the host record — a Resource or Archival Object — opens the Create Digital Object modal, chooses **one** local file and triggers deposit; reviews the resulting Identifier \+ File Version; sets Publish / Representative; saves via "Create and Link"; moves to the next record and repeats. (The control is not offered when editing a Digital Object directly — A-21.) |
 | **AS Staff User (Mode B)** | On the host record (Resource or parent Archival Object), picks one local file per immediate child in the "Upload and Link" panel, clicks **"Upload and Link"** once, and reviews the per-child result summary. |
 | **AS Staff User (Mode C)** | On the host record (Resource or Archival Object), clicks **"Upload Digital Objects,"** multi-selects files, reviews the Digital Objects populated into Instances (Title \= filename, Identifier \= URI, \+ a File Version), then clicks **Save**. |
@@ -420,9 +420,8 @@ ensure
   package&.dispose                                          # drop transient bytes (A-04)
 end
 
-# DepositBatch: retained ONLY for the deferred wizard (batch across archival objects).
-# The shipping "Upload File Version" control deposits one file per child Archival Object,
-# so it calls deposit_entry directly. N x DepositEntry, fail-forward (parent G-07).
+# DepositBatch: N × DepositEntry for Modes B and C (and any future deep mapping).
+# Mode A calls deposit_entry directly (one file). Fail-forward per entry (G-07).
 def deposit_batch(files, dc_fields:, collection_href:)
   DepositReport.new(files.map { |f|
     begin;  deposit_entry(f, dc_fields: dc_fields, collection_href: collection_href)
@@ -667,7 +666,7 @@ Reached via **Repository management → SWORD Deposit Settings** (parent §Confi
 | `accepted_formats` | string | No | Comma-separated extensions and/or MIME types used to build file-input `accept` attributes and validate uploads. See [Accepted File Formats](#accepted-file-formats). |
 | `default_package_format` | enum | Yes | `binary` (v0.1); METS packaging deferred |
 
-**Save / test actions** (parent BS01): **Test connection** GETs the Service Document, validates auth, and populates the collection list; failures surface to the admin.
+**Save / test actions** (BS01): **Test connection** GETs the Service Document, validates auth, and populates the collection list; failures surface to the admin.
 
 # **Reference UI touchpoint** {#reference-ui-touchpoint}
 
@@ -682,7 +681,7 @@ The control lives **in the File Versions subrecord section of the Create Digital
 | Entry contexts | **Only** the "Create Digital Object" modal opened from a **Resource or Archival Object** Instances group. **Not** shown on the standalone Digital Object edit screen; **Digital Object Components are out of scope** (A-21 / D-17). |
 | **"Upload File Version"** button | Rendered next to "Add File Version" in that modal when the repository has SWORD enabled (ES01 hides/disables otherwise, with tooltip). |
 | Hidden file input | `<input type="file" accept=".pdf,.zip">` — **single file** (A-13; no `multiple`). `accept` is illustrative; build it from `accepted_formats` (see [Accepted File Formats](#accepted-file-formats)). |
-| Collection select | Shown only if \>1 collection or no default; else uses `default_collection_href`; "None" allowed (parent BS02). |
+| Collection select | Shown only if \>1 collection or no default; else uses `default_collection_href` (D-06). A Collection IRI is always required for the SWORD POST (A-03). |
 | Progress \+ result | Upload progress; on success, **set the Digital Object Identifier** (required, canonical URI) and **populate a File Version row** (`file_uri`, `publish` checked) exactly as if added manually (A-19); on failure, inline error (ES02/ES03/ES04). |
 | Save semantics | The Identifier and the deposited File Version are populated into the in-memory form and persisted on **"Create and Link"** (A-11). No auto-save is required; see D-03. |
 
@@ -838,59 +837,69 @@ Headers: **Authorization**, **Content-Type**, **Content-Length**, **Content-Disp
 
 # **Behavior Scenarios** {#behavior-scenarios}
 
-### BS-01: Administrator configures a SWORD deposit endpoint
+These scenarios match Modes A/B/C on a **host record** (Resource or Archival Object). Each deposit is **1:1:1** (one file → one repository item → one Digital Object). SWORD deposit always targets a **Collection IRI** (from `default_collection_href` and/or an explicit collection select — A-03, D-06).
+
+### BS01: Administrator configures a SWORD deposit endpoint
 
 | Step | Description |
 | :---- | :---- |
 | Given | The user has Administrator-level access to ArchivesSpace. |
-|  | The administrator has a deposit account for a SWORD v2 enabled repository. |
-| When | The administrator navigates to System \> Manage Repositories, selects the repository, and opens SWORD Deposit Settings. |
-|  | The administrator enters the required fields ([Configuration Fields (Proposed)](#heading=h.ik4n5ofw455h) |
-| Then | The system retrieves and validates the SWORD Service Document from the configured endpoint URL. |
-|  | The system notifies the administrator that the SWORD endpoint is enabled. |
-|  | The SWORD Deposit button becomes active in the SUI for staff users of that repository. |
+|  | The administrator has a deposit account for a SWORD v2 enabled repository that exposes a Service Document and ≥1 Collection accepting the configured deposit types (A-03). |
+| When | The administrator navigates to System \> Manage Repositories, selects the repository, and opens **SWORD Deposit Settings**. |
+|  | The administrator enters the required fields (Service Document URL, credentials, protocol, enable flag) and optionally a **default collection**; see [Configuration model](#configuration-model). |
+|  | The administrator uses **Test connection**. |
+| Then | The system retrieves and validates the SWORD Service Document, confirms auth, and populates the available Collection list. |
+|  | The system notifies the administrator that the SWORD endpoint is enabled for that repository. |
+|  | Mode A/B/C deposit controls become available in the SUI for staff users of that repository (ES01). |
 
-### BS02: Staff user sets up a deposit for a file or a batch of files that relate to many Archival objects
-
-| Step | Description |
-| :---- | :---- |
-| Given | A Resource with Archival Objects or an Archival Object with child archival objects exists in ArchivesSpace. |
-|  | Multiple files are associated with multiple archival objects. |
-|  | SWORD deposit is configured and enabled. |
-| When | The staff user initiates a batch deposit from the parent component by selecting a button. (For example: A new “Create” button beside the existing “Make Representative” button, which is inside the “Add Digital Object” feature that is accessed from the “Instances” field group). |
-| Then | A SWORD Deposit pop up wizard appears. |
-| When | The staff user fills out Page 1 of the wizard, which requires them to choose a Target Collection and a Source location for the files. The staff user is not depositing to a specific collection, or their repository has no collections, so they choose “None” for Target Collection. The staff user completes the action via a button. |
-| Then | Page 2 of the SWORD pop up wizard appears. |
-| When | Page 2 of the wizard shows a file tree of the Source Location with checkboxes for choosing files to upload, including options to select or de-select all. The staff user selects the files they want to upload and completes the action via a button. |
-| Then | Page 3 of the SWORD pop up wizard appears. |
-|  | Page 3 of the wizard shows two file trees: one with only the files that will be deposited; and one with the archival objects that the user can relate the files to.  |
-|  | The staff user drags and drops files to the archival objects they relate to. Some archival objects have many files related to one archival object. Some only have one file related to the archival object. |
-|  | The staff user initiates the deposit by selecting a button. |
-
-### BS03: ArchivesSpace deposits the files, retrieves URIs, and generates digital objects
+### BS02: Mode A — single deposit from Create Digital Object
 
 | Step | Description |
 | :---- | :---- |
-| Given | A staff user has configured a SWORD deposit using the ArchivesSpace deposit wizard. |
-|  | Multiple files are associated with multiple archival objects. |
-|  | SWORD deposit is configured and enabled. |
-| When | The staff user completes the action via a button. |
-| Then | A SWORD deposit is made for each archival object’s file grouping (sometimes a single file, sometimes a group of files).A SWORD receipt is generated. |
-| When | ArchivesSpace receives the SWORD receipt with new URIs for digital objects in the SWORD-enabled system. |
-| Then | Digital Object records are created in ArchivesSpace for each deposited item or group of items, linked to their respective sub-components. |
-|  | A batch deposit summary is displayed showing success/failure per file. |
-|  | Successful deposits are logged; failed deposits are flagged for retry (see ES02). |
+| Given | SWORD deposit is configured and enabled for the repository. |
+|  | The staff user is editing a **host record** (Resource or Archival Object). |
+| When | The staff user opens **Instances → Add Digital Object → Create**. |
+| Then | The Create Digital Object modal opens with the File Versions subrecord; **"Upload File Version"** is available (scoped to this Resource/AO context — A-21). |
+| When | The staff user selects a target Collection if prompted (shown only when there is no default or more than one collection — D-06), chooses **one** local file, and triggers deposit. |
+| Then | The plugin deposits the file via SWORD to the Collection IRI and receives a receipt with a public item URL. |
+|  | The plugin sets the Digital Object **Identifier** and populates a **File Version** `file_uri` with that URL (A-19); nothing is persisted yet (A-11). |
+| When | The staff user clicks **"Create and Link"**. |
+| Then | ArchivesSpace creates the Digital Object and links it to the host record as a digital-object instance. |
+|  | The staff user may move to the next host record in the tree and repeat (A-13). |
+
+### BS03: Mode B — Upload and Link to immediate children
+
+| Step | Description |
+| :---- | :---- |
+| Given | SWORD deposit is configured and enabled. |
+|  | The staff user is editing a **host record** that has **immediate children** (Resource → top-level Archival Objects; Archival Object → child Archival Objects — A-15/A-20). Those child records already exist (A-13). |
+| When | The staff user opens the **"Upload and Link"** panel under **Instances**. |
+| Then | The panel lists each immediate child with a single file input (children left blank are skipped). |
+| When | The staff user selects one local file per child to populate, confirms the target Collection if prompted (D-06), and clicks **"Upload and Link"**. |
+| Then | For each child with a file, the plugin deposits via SWORD (`DepositEntry`), then **server-side** creates a Digital Object (Identifier \+ File Version \= returned URI — A-19) and links it to that child (A-14). |
+|  | A per-child result summary shows success or failure; failures are **fail-forward** (successful children remain linked; failed children can be retried — G-07 / ES02 / ES05). |
+
+### BS04: Mode C — Upload Digital Objects onto one host record
+
+| Step | Description |
+| :---- | :---- |
+| Given | SWORD deposit is configured and enabled. |
+|  | The staff user is editing a **host record** (Resource or Archival Object). |
+| When | The staff user clicks **"Upload Digital Objects"** beside **Add Digital Object** in **Instances**, multi-selects one or more local files, and confirms the target Collection if prompted (D-06). |
+| Then | The plugin deposits each file via SWORD. For each success, it prepares one Digital Object (Title \= filename without extension; Identifier \+ File Version \= returned URI — A-17/A-19) as an in-form instance on the open host record. |
+| When | The staff user clicks **Save** on the host record. |
+| Then | ArchivesSpace persists the new Digital Objects and their instance links (A-18). Per-file failures leave other successes intact (fail-forward; ES02). |
 
 # **Error Scenarios** {#error-scenarios}
 
 | ID | Condition | User-visible behavior | Log / notes |
 | :---- | :---- | :---- | :---- |
-| ES01 | SWORD not configured/enabled for repository | "Upload File Version" hidden or disabled with tooltip "SWORD deposit is not configured…" | — |
-| ES02 | Endpoint HTTP 4xx/5xx or SWORD Error Document | Plain-language error per file; **no File Version** created for that file | Full SWORD body \+ timestamp \+ user in audit log; retry/cancel offered |
+| ES01 | SWORD not configured/enabled for repository | Mode A/B/C deposit controls hidden or disabled with tooltip "SWORD deposit is not configured…" | — |
+| ES02 | Endpoint HTTP 4xx/5xx or SWORD Error Document | Plain-language error per file; **no File Version** / DO create for that file | Full SWORD body \+ timestamp \+ user in audit log; retry/cancel offered |
 | ES03 | Auth failure (401/403) | "Authentication failed. Your SWORD credentials may be expired or incorrect. Contact your administrator." | No deposit attempted; **never log password** |
 | ES04 | Missing required metadata (e.g. no host-record title for `dc:title`) | Block the file; prompt to fill/acknowledge required fields on the host record | Required DC fields follow M-01 (`dc:title` at minimum when metadata is enabled) |
-| — | **Partial batch failure** (parent G-07, Mode B) | **Fail-forward:** children that deposited \+ created \+ linked show success; failed children keep their file input for retry, others are unaffected | Consistent with A1-2 `LinkBatch` semantics; per-child result in the report |
-| ES05 | **Deposit succeeded but AS create/link failed** (Mode B) | Report the child as failed with a clear message; offer retry | **Repository item is orphaned**; log the Edit-IRI for cleanup. Default is fail-forward, not rollback (D-12) |
+| — | **Partial batch failure** (G-07, Modes B and C) | **Fail-forward:** successful entries persist; failed entries remain retryable; others unaffected | Consistent with A1-2 `LinkBatch` semantics; per-child / per-file result in the report |
+| ES05 | **Deposit succeeded but AS create/link failed** (Mode B; Mode C fallback) | Report the entry as failed with a clear message; offer retry | **Repository item is orphaned**; log the Edit-IRI for cleanup. Default is fail-forward, not rollback (D-12) |
 
 # **Performance and Scalability** {#performance-and-scalability}
 
@@ -919,7 +928,7 @@ This plugin adds a staff-initiated deposit path; it does not introduce backgroun
 | D-08 | Re-deposit/update | New item vs SWORD replace | **New item (deposit-only)** in v0.1 (G-10) |
 | D-09 | **Mode B panel placement** | New section under **Instances** on the host record vs a separate panel/tab | **Section under Instances** on the host record — Resource or AO (matches the client's "under Instances" ask); confirm with UX |
 | D-10 | **Mode B write path** | Server-side create \+ link vs client form population | **Server-side create \+ link** (A-14) — required because Mode B spans sibling records with no single open form |
-| D-11 | **Mode B child scope** | Immediate children only vs recursive/deep | **Immediate (direct) children only** in v0.4 (A-15/A-20: Resource → top-level AOs, AO → child AOs); deep selection deferred to the wizard |
+| D-11 | **Mode B child scope** | Immediate children only vs recursive/deep | **Immediate (direct) children only** (A-15/A-20: Resource → top-level AOs, AO → child AOs); deep / free-form drag-and-drop mapping deferred |
 | D-12 | **Mode B transactionality** | Fail-forward per child vs all-or-nothing vs rollback of orphaned items | **Fail-forward per child** (G-07); log Edit-IRI of orphaned items (ES05); auto-rollback deferred |
 | D-13 | **Mode C multi-nested create on one save** | In-form nested create of N Digital Objects on the host record's Save vs server-side pre-create per file | **In-form nested create** (A-18) — orphan-free and consistent with Mode A; **verify in the sandbox** that the Resource/AO form serializes multiple nested new Digital Objects, else fall back to server-side pre-create |
 | D-14 | **Where the returned URI lands (all modes)** | Identifier only vs File Version only vs **both** | **Both (resolved 2026-07-20):** Identifier (`digital_object_id`, *required*) \= canonical URI **and** a File Version `file_uri` \= same URI for the PUI clickable link (sandbox-verified). Applies to Modes A, B, and C (A-19) |
@@ -939,14 +948,14 @@ This plugin adds a staff-initiated deposit path; it does not introduce backgroun
 | **5 — Multi-DO Upload (Mode C)** | "Upload Digital Objects" button (multi-select) in the Resource/AO Instances; `deposit_digital_objects_batch` \+ host-record DC with **per-file `dc:title`/AS Title \= basename** \+ `DigitalObjectInstanceBuilder`; in-form instance population; verify multi-nested create (D-13) | frontend \+ `lib` |
 | **6 — Hardening** | ES01–ES05, partial-batch fail-forward, orphaned-item logging, audit log, credential encryption | plugin-wide |
 | **7 — Metadata (M-01)** | Implement `HostRecordDcMapper` fields beyond title; admin on/off for DC; confirm date/creator mapping with AS+DSpace teams (G-05). METS packaging deferred; wire `accepted_formats` to UI \+ validation | `lib/metadata` |
-| **8 — Wizard (deferred)** | Deep/drag-drop file→archival-object mapping over the same `DepositBatch` \+ create-and-link machinery | frontend |
+| **8 — Deep mapping (deferred)** | Free-form drag-drop file→archival-object mapping over the same `DepositBatch` \+ create-and-link machinery | frontend |
 | **9 — SWORD v3 (future)** | `SwordV3ClientAdapter`, OAuth | `lib/sword` |
 
 # **Related documents** {#related-documents}
 
 | Document | Relationship |
 | :---- | :---- |
-| `June 29 version of this doc` | Requirements baseline (BS01–BS03, ES01–ES04, G-01–G-10) |
+| `June 29 version of this doc` | Early requirements baseline (roles, config, ES01–ES04, G-01–G-10); BS01–BS04 in this document supersede the older multi-page deposit flow |
 | [V1](https://docs.google.com/document/d/1YWPMBOrjoQC3e_cQUTZu3BKsgVw0TH0cqh7-o_UNV8U/edit?tab=t.0) | Sibling SWORD deposit design (VIVO/Java); adapter \+ config patterns reused |
 | [`A1-2`](https://docs.google.com/document/d/1GVP7IgAcK4kcJyl27Fobm_EuDJZTnh_IbUl5C61jNYw/edit?tab=t.0) | AS write path (no PATCH; find→merge→save); `Entry`/`Batch` precedent |
 | [`as-dc-mapping`](https://archivesspace.org/wp-content/uploads/2019/06/DC-OAI-Export-Mapping-20190610.xlsx) | Candidate AS → Dublin Core mapping (export-era; needs review for deposit) |
@@ -967,3 +976,4 @@ This plugin adds a staff-initiated deposit path; it does not introduce backgroun
 | 0.9-draft | 2026-07-30 | **Hard-coded AS → Dublin Core for PDF deposits** (aligned with V1 pattern): `HostRecordDcMapper` builds a DC field → AS value map from the persisted host/child record and passes it into `SwordDepositController` / `deposit_entry` (sample shows `dc:title` only). **Mode C:** `dc:title` and AS Digital Object Title use **per-file basename**; all other DC fields still come from the host record. METS / packaged deposit deferred (RoR client limitation). Updated A-10/A-12/A-17, class sketches, metadata section, M-01, and epics. |
 | 0.10-draft | 2026-08-10 | **Any configured binary format** (not PDF-only): Tier 2 `accepted_formats`; Mode A/B/C file inputs use illustrative `accept=".pdf,.zip"` built from config; [Accepted File Formats](#accepted-file-formats) links DSpace `bitstream-formats.xml`. Renamed `DepositPackage.pdf` → `DepositPackage.build`. METS **packaging** still out of scope; `.zip` as an ordinary binary bitstream is allowed when configured. |
 | 0.11-draft | 2026-08-10 | Added **Performance and Scalability**: binary transit through AS to the IR; rates tied to staff usage/upload speed; optional Mode B async sequencing; IR **In-Progress** does not affect AS (A-09); overall modest impact on AS. |
+| 0.12-draft | 2026-08-21 | Rewrote **Behavior Scenarios** to Modes A/B/C (BS01 config, BS02 Mode A, BS03 Mode B, BS04 Mode C); removed multi-page "wizard" / "None" collection language; Collection IRI required for SWORD POST; deferred deep mapping renamed (out of scope, D-11, Epic 8). |
