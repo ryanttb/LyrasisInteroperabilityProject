@@ -57,6 +57,8 @@ Systems: ArchivesSpace SUI, ArchivesSpace PUI, DSpace REST API (7.x / DSpace 9.x
 
 [User Interface Requirements](#user-interface-requirements)
 
+[Error Reporting](#error-reporting)
+
 [Open Questions and Specification Gaps](#open-questions-and-specification-gaps)
 
 # **Purpose and Scope** {#purpose-and-scope}
@@ -566,7 +568,12 @@ OUTPUT: LinkResult { as_ref, digital_object_ref, dspace_item_uuid, status, do_wa
 7. PATCH(DS_ITEM, add configured AS URI field = AS_URI)
    // If as_uri_source = archival_object, shared DOs may add multiple AS URIs (accepted)
    IF PATCH fails:
-     record error; optionally rollback AS change (policy TBD — G-29)
+     // Fail-forward (G-13 / G-29): do **not** roll back the AS Digital Object
+     // or its instance link. Primary goal is AS → DSpace linking; DSpace
+     // can be updated manually later. Not an illegal state for this version.
+     log ERROR (DSpace PATCH failure; identify DS item + AS refs)
+     surface WARNING via existing ArchivesSpace / Rails save-warning mechanisms
+     RETURN LinkResult { status: "linked", warnings: [...], ... }
 8. IF link.publish:
      publish as configured
 9. RETURN LinkResult
@@ -588,6 +595,8 @@ RETURN { total, succeeded, failed, results }
 ```
 
 **Bulk semantics:** No special bulk endpoint is required for v0.4. Shared DSpace URIs resolve once, then fan out to N archival-object instance links. Background-job wrapping (ArchivesSpace `jobs_example` pattern) is deferred.
+
+**Fail-forward (no rollback):** If DSpace PATCH fails after the ArchivesSpace Digital Object exists and is linked, the plugin **does not** undo the AS create or instance link. That one-sided link is accepted for this version. See [Error Reporting](#error-reporting).
 
 ## Example Walkthrough {#example-walkthrough}
 
@@ -626,8 +635,8 @@ GET {dspace}/api/discover/search/objects?query=Krispy&dsoType=item&page=0&size=2
 ```
 {
   "total": 2,
-  "succeeded": 1,
-  "failed": 1,
+  "succeeded": 2,
+  "failed": 0,
   "results": [
     {
       "as_ref": "/repositories/1/archival_objects/11",
@@ -640,9 +649,11 @@ GET {dspace}/api/discover/search/objects?query=Krispy&dsoType=item&page=0&size=2
     },
     {
       "as_ref": "/repositories/1/archival_objects/12",
+      "digital_object_ref": "/repositories/1/digital_objects/56",
+      "do_was_created": true,
       "dspace_item_uuid": "ff7ec3a4-0aab-418b-94fc-d0e8189084db",
-      "status": "failed",
-      "errors": ["DSpace PATCH 403: insufficient permissions"]
+      "status": "linked",
+      "warnings": ["DSpace PATCH 403: insufficient permissions — AS link kept; update DSpace manually"]
     }
   ]
 }
@@ -758,8 +769,9 @@ GET {dspace}/api/discover/search/objects?query=Krispy&dsoType=item&page=0&size=2
 |  | There is **no** LinkMap 1:1 duplicate rejection. |
 |  | Each distinct DSpace item is PATCHed to add the ArchivesSpace URI per configuration (`as_uri_source`; multiple AO URIs accepted if that source is chosen). |
 |  | Children without a selection are skipped. |
-|  | Failures are **recorded** with other link errors (no dedicated error UX in this spec). |
-|  | A per-link result report reflects success and failure (fail-forward for partial batches — G-29). |
+|  | If DSpace PATCH fails after AS create/link succeeds, the plugin **fails forward**: the AS Digital Object remains and stays linked to the intended DSpace item. This is **not** treated as an illegal state; DSpace can be updated manually later. The plugin **does not** roll back AS writes (G-13 / G-29). |
+|  | DSpace PATCH failures are logged as **ERROR** and surfaced as a **WARNING** using existing ArchivesSpace / Rails mechanisms for warnings on object save — not a new warning UI. |
+|  | Other link failures (e.g. AS create) are **recorded** (no dedicated error UX in this spec). |
 
 ### BS-10: First DSpace API use in a session bootstraps auth
 
@@ -781,7 +793,7 @@ GET {dspace}/api/discover/search/objects?query=Krispy&dsoType=item&page=0&size=2
 | ES-03 | Mode B Search without Collection | UI validation error; no search call |
 | ES-04 | AS GET child AO fails (404) | Skip link; record error for that entry |
 | ES-05 | AS POST digital object fails (400) on create | Record error for that DSpace URI; skip instance links and DSpace PATCH for rows that needed the new DO (no dedicated error UX) |
-| ES-06 | DSpace PATCH fails after AS success | Record partial state; surface rollback need (G-29) |
+| ES-06 | DSpace PATCH fails after AS success | **Fail-forward, no rollback.** Keep the AS Digital Object and its instance link. Log **ERROR**; surface **WARNING** via existing ArchivesSpace / Rails save-warning practice. DSpace may be updated manually later. Not an illegal state for this version (G-13 / G-29). |
 | ES-07 | Same DSpace item selected for multiple children | **Allowed** (G-04) — one find-or-create DO; multiple AO instance links |
 | ES-08 | Drag onto an input that already has a selection | Replace provisional selection, or reject — confirm UX (G-34) |
 
@@ -886,9 +898,13 @@ The feature design should be reviewed, further edited, and if agreed upon, forma
 
 Maintenance of this feature after the implementation phase will fall to the ArchivesSpace development team.
 
-## Error Reporting
+## Error Reporting {#error-reporting}
 
-Errors are reported in ArchivesSpace server logs.
+This version **does not perform rollbacks**. If DSpace PATCH fails after ArchivesSpace has created and/or linked a Digital Object, the plugin **fails forward**: the AS Digital Object remains and stays linked to the selected DSpace item. That one-sided link is **not** an illegal state for this version — the primary goal is linking ArchivesSpace objects to DSpace ones. Staff can update the DSpace record manually later.
+
+**Logging:** DSpace PATCH failures (and comparable DSpace write failures during Save) are written to ArchivesSpace server logs as **ERROR**, with enough identifying detail to find the DSpace item and the AS Digital Object / archival object involved (follow existing ArchivesSpace / Rails logging conventions; this spec does not invent a separate audit schema).
+
+**User-facing:** Mention the DSpace failure as a **WARNING** using whatever mechanism ArchivesSpace already uses to surface warnings when saving objects (Rails / SUI save-warning practice). Do **not** add a dedicated error/warning UI for this feature. A failed DSpace PATCH must **not** fail or undo the host-record Save.
 
 ## Performance and Scalability
 
@@ -912,7 +928,7 @@ If many users search via Mode A, typeahead, the DSpace endpoint may take higher 
 | **G-10** | Linking, Search | DSpace search field behavior needs further investigation — can we search multiple fields at a time? What operators are available? Do we need to let the users choose? | Jess |
 | **G-11** | Authentication | Confirm feasibility of token refresh behavior | ASpace Devs |
 | **G-12** | Linking | Should Save also publish new Digital Objects / instances, or remain unpublished until staff publish separately? (Old “Publish button per search result” UX removed in v0.4.) | ASpace Program Manager, ASpace Devs |
-| **G-13** | Linking | What transaction support is required (e.g. if writing the link to DSpace fails, does the AS Digital Object also fail / roll back?) | ASpace Program Manager, ASpace Devs |
+| **~~G-13~~** | ~~Linking~~ | ~~Rollback AS if DSpace write fails?~~ **Resolved:** **No rollback** this version. Fail-forward: keep the AS Digital Object and instance link. DSpace can be updated manually later. Not an illegal state. | — |
 | **G-14** | Configuration | Do Mode A search fields / query construction need to be configurable beyond free text? | ASpace Program Manager |
 | **G-15** | Configuration | Do search result display fields need to be configurable? Items returns dc.title, UUID, handle, owningCollection, mappedCollections (plus more). | ASpace Program Manager |
 | **G-16** | Configuration | Should any other fields in the ASpace Digital Object record besides title, identifier, File URI and language be populatable from the DSpace metadata? | ASpace Program Manager, ASpace Devs |
@@ -922,12 +938,12 @@ If many users search via Mode A, typeahead, the DSpace endpoint may take higher 
 | **G-20** | Linking, Configuration | Mode A: first page / top N only, or full pagination? Mode B pagination? Max results enforced via DSpace Max Results? | ASpace Program Manager, ASpace Devs |
 | **~~G-21~~** | ~~Configuration~~ | ~~Is collection scope useful?~~ **Resolved in v0.4:** Mode B **requires** Collection (`scope=UUID`). Mode A typeahead is not collection-scoped by default (confirm whether optional scope should be added). | — |
 | **G-22** | UI | Does anything need to be changed about the System \> System Information page? | ASpace Devs |
-| **G-23** | Error handling & Logging | Do we need to capture errors in the ArchivesSpace logs? | ASpace Program Manager, ASpace Devs |
-| **G-24** | Error handling & Logging | What details about link actions need to be recorded in the ArchivesSpace logs? | ASpace Program Manager, ASpace Devs |
+| **~~G-23~~** | ~~Error handling & Logging~~ | ~~Capture errors in AS logs?~~ **Resolved:** Yes — DSpace PATCH (and comparable write) failures are logged as **ERROR**. | — |
+| **~~G-24~~** | ~~Error handling & Logging~~ | ~~What link-action details to log?~~ **Resolved:** Log DSpace write failures as ERROR with identifying DS item + AS refs, using existing ArchivesSpace / Rails logging practice. Do not invent a separate audit schema. User-facing mention is a **WARNING** on Save via existing warning mechanisms. | — |
 | **~~G-26~~** | ~~User Stories~~ | ~~Copy the nice user story narratives from the GitHub issues into the overview~~ | ~~Jess~~ |
 | **G-27** | Linking, Configuration | Do DSpace and ArchivesSpace use different language codes? How do we handle this mapping? | ASpace Program Manager, ASpace Devs |
 | **G-28** | Configuration, UI | Do we want to allow for use of DSpace Display Name from configuration in the UI (section title, buttons, etc.)? | ASpace Program Manager, ASpace Devs |
-| **G-29** | Linking | Rollback AS when DSpace PATCH fails? Default for v0.4 = Fail-forward; report partial state | ASpace Program Manager, Devs |
+| **~~G-29~~** | ~~Linking~~ | ~~Rollback AS when DSpace PATCH fails?~~ **Resolved:** **No rollback.** Fail-forward; keep AS DO + link; log ERROR; WARNING on Save via existing AS / Rails practice. See [Error Reporting](#error-reporting). | — |
 | **~~G-30~~** | ~~Linking~~ | ~~Attach new DO to archival_object.instances?~~ **Resolved in v0.4:** Required — attach the find-or-create DO as a digital-object instance on each selected child AO (shared DO allowed). | — |
 | **G-31** | Linking | Proposed plugin endpoint wrapping LinkBatch? Optional `POST /repositories/:id/integrations/dspace/links` — not required if orchestrator stays in-plugin on Save | ASpace Devs |
 | **G-32** | Linking | Exact timing of LinkBatch vs native host-record Save (before, after, or interleaved with AS form POST)? | ASpace Devs |
